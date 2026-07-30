@@ -5,9 +5,9 @@
   --border: #475569;
   --text: #f1f5f9;
   --muted: #94a3b8;
-  --primary: #f97316;
-  --primary-d: #ea580c;
-  --accent: #38bdf8;
+  --primary: #F39200; /* orange TDMI */
+  --primary-d: #d17f00;
+  --accent: #1CA9E0; /* bleu TDMI */
   --ok: #22c55e;
   --warn: #eab308;
   --danger: #ef4444;
@@ -37,6 +37,23 @@ header {
 }
 header .logo { width: 32px; height: 32px; }
 header h1 { font-size: 1.05rem; margin: 0; flex: 1; }
+header .logo-tdmi {
+  height: 34px;
+  flex: 1;
+  object-fit: contain;
+  object-position: left center;
+  background: #fff;
+  border-radius: 8px;
+  padding: 3px 8px;
+}
+.icon-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  line-height: 1;
+}
 
 .status { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }

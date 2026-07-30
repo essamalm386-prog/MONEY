@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TDMI Pointage</string>
+    <string name="title_activity_main">TDMI Pointage</string>
+    <string name="package_name">fr.tdmi.pointage</string>
+    <string name="custom_url_scheme">fr.tdmi.pointage</string>
+</resources>

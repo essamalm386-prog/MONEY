@@ -1,11 +1,11 @@
 {
-  "name": "Pointage BTP",
-  "short_name": "Pointage",
-  "description": "Pointage des heures des intérimaires et employés par chantier",
+  "name": "TDMI Pointage",
+  "short_name": "TDMI",
+  "description": "Pointage des heures des intérimaires et employés par chantier — TDMI Gros Œuvre · Rénovation",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
-  "theme_color": "#f97316",
+  "theme_color": "#F39200",
   "orientation": "portrait",
   "icons": [
     {

@@ -754,6 +754,67 @@ async function loadReference() {
   state.ref = await store.reference();
 }
 
+// =====================================================================
+//  RÉGLAGES (URL du serveur — indispensable sur l'app mobile TDMI)
+// =====================================================================
+function openSettings() {
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="sheet">
+      <h3>Réglages — TDMI Pointage</h3>
+      <label>Adresse du serveur</label>
+      <input id="set-url" placeholder="https://pointage.mon-entreprise.fr" value="${esc(store.apiBase)}" />
+      <p class="muted">Laisser vide si l'application et le serveur sont sur la même adresse (usage web). Sur mobile, indiquez l'URL de votre serveur de pointage.</p>
+      <div id="set-status" class="muted"></div>
+      <div class="row" style="margin-top:1rem">
+        <button class="btn ghost" id="set-cancel">Fermer</button>
+        <button class="btn ghost" id="set-sync">Synchroniser</button>
+        <button class="btn" id="set-save">Enregistrer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector("#set-cancel").onclick = close;
+  overlay.onclick = (ev) => {
+    if (ev.target === overlay) close();
+  };
+  const status = overlay.querySelector("#set-status");
+
+  overlay.querySelector("#set-save").onclick = async () => {
+    store.setApiBase(overlay.querySelector("#set-url").value.trim());
+    status.textContent = "Test de connexion…";
+    try {
+      const r = await fetch(store.api("/api/health"));
+      const j = await r.json();
+      status.style.color = "var(--ok)";
+      status.textContent = j.ok ? "✅ Connecté au serveur." : "Réponse inattendue.";
+      await store.refreshReference();
+      await loadReference();
+      await store.sync();
+      render();
+    } catch {
+      status.style.color = "var(--danger)";
+      status.textContent = "❌ Serveur injoignable (les données locales restent disponibles hors-ligne).";
+    }
+  };
+  overlay.querySelector("#set-sync").onclick = async () => {
+    status.style.color = "var(--muted)";
+    status.textContent = "Synchronisation…";
+    try {
+      await store.sync();
+      await loadReference();
+      render();
+      status.style.color = "var(--ok)";
+      status.textContent = "✅ Synchronisé.";
+    } catch {
+      status.style.color = "var(--danger)";
+      status.textContent = "❌ Échec de synchronisation.";
+    }
+    refreshStatus();
+  };
+}
+
 function render() {
   if (state.tab === "pointage") renderPointage();
   else if (state.tab === "planning") renderPlanning();
@@ -772,6 +833,8 @@ async function main() {
   document.querySelectorAll("nav.tabs button").forEach((b) => {
     b.onclick = () => setTab(b.getAttribute("data-tab"));
   });
+  const settingsBtn = el("settings-btn");
+  if (settingsBtn) settingsBtn.onclick = openSettings;
 
   await store.init();
   await loadReference();

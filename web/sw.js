@@ -6,7 +6,7 @@
  *   - Requêtes API : network-first avec repli silencieux (les données métier
  *     vivent dans IndexedDB, gérées par store.js — le SW ne cache pas l'API).
  */
-const CACHE = "pointage-btp-v1";
+const CACHE = "tdmi-pointage-v2";
 const SHELL = [
   "/",
   "/index.html",
@@ -16,6 +16,8 @@ const SHELL = [
   "/domain.js",
   "/manifest.webmanifest",
   "/icons/icon.svg",
+  "/icons/tdmi-logo.svg",
+  "/icons/tdmi-foreground.svg",
 ];
 
 self.addEventListener("install", (event) => {

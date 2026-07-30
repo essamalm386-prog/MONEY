@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120">
+  <g fill="none" stroke="#F39200" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 78 L62 34 L106 78"/>
+    <path d="M34 50 q-10 14 -10 30"/>
+  </g>
+  <circle cx="34" cy="42" r="6" fill="#F39200"/>
+  <text x="120" y="70" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" fill="#1CA9E0" letter-spacing="1">TDMI</text>
+  <text x="122" y="92" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" fill="#F39200">GROS ŒUVRE · RÉNOVATION</text>
+  <text x="120" y="112" font-family="Georgia, serif" font-size="15" font-style="italic" fill="#F39200">Notre métier le bâtiment</text>
+</svg>

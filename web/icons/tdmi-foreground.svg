@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 432">
+  <!-- Zone de sécurité adaptative : contenu centré ~ 60% -->
+  <g transform="translate(216 216) scale(0.62) translate(-216 -216)">
+    <g fill="none" stroke="#F39200" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M76 232 L216 108 L356 232"/>
+      <path d="M126 158 q-26 38 -26 84"/>
+    </g>
+    <circle cx="126" cy="138" r="13" fill="#F39200"/>
+    <text x="216" y="330" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+          font-size="140" font-weight="800" fill="#1CA9E0" letter-spacing="2">TDMI</text>
+  </g>
+</svg>
