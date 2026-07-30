@@ -47,6 +47,10 @@ jobs:
           cache: npm
 
       - name: Installer les dépendances
+        # Les tests de la CI n'utilisent pas de navigateur (l'e2e est un script
+        # séparé) : on évite tout téléchargement de navigateur Playwright.
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: npm ci
 
       # Garde-fou : on ne publie pas d'APK si la logique métier est cassée.
