@@ -95,51 +95,63 @@ async function main() {
     });
 
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
-    await page.waitForSelector('[data-point="wk_e2e"]');
 
-    // Fixe la date sur un jour connu.
+    // Onglet Pointage, date connue.
+    await page.click('.tabbar button[data-tab="pointage"]');
     await page.fill("#f-date", "2026-07-30");
-    await page.waitForSelector('[data-point="wk_e2e"]');
+    await page.waitForSelector('[data-detail="wk_e2e"]');
 
-    // Ouvre la feuille de saisie pour la personne et pointe 8h.
-    await page.click('[data-point="wk_e2e"]');
+    // Saisie détaillée : créneau 07:30–16:30, pause 60 min → 8 h.
+    await page.click('[data-detail="wk_e2e"]');
     await page.waitForSelector("#seg-kind");
     await page.fill("#start", "07:30");
     await page.fill("#end", "16:30");
     await page.fill("#break", "60");
     await page.click("#save");
-    // La ligne de la personne affiche désormais l'étiquette TRAVAIL (persistant).
     try {
-      await page.waitForSelector(".tag.TRAVAIL", { timeout: 8000 });
+      await page.waitForFunction(
+        () => document.querySelector('[data-detail="wk_e2e"]')?.textContent.includes("8h00"),
+        { timeout: 8000 },
+      );
     } catch (err) {
-      const toast = await page.locator("#toast").innerText().catch(() => "");
-      console.error("DEBUG toast:", JSON.stringify(toast));
+      const toastTxt = await page.locator("#toast").innerText().catch(() => "");
+      console.error("DEBUG toast:", JSON.stringify(toastTxt));
       console.error("DEBUG errors:", errors.join(" | "));
       throw err;
     }
-    console.log("✓ Saisie TRAVAIL enregistrée dans l'UI");
+    console.log("✓ Saisie TRAVAIL enregistrée dans l'UI (8h00)");
+
+    // Stepper : +30 min puis −30 min → retour à 8h00.
+    await page.click('[data-step="wk_e2e"][data-delta="1"]');
+    await page.waitForFunction(
+      () => document.querySelector('[data-detail="wk_e2e"]')?.textContent.includes("8h30"),
+      { timeout: 5000 },
+    );
+    await page.click('[data-step="wk_e2e"][data-delta="-1"]');
+    await page.waitForFunction(
+      () => document.querySelector('[data-detail="wk_e2e"]')?.textContent.includes("8h00"),
+      { timeout: 5000 },
+    );
+    console.log("✓ Stepper −/+ fonctionne (8h00 → 8h30 → 8h00)");
 
     // Vérifie la persistance côté serveur (synchro locale → API → SQLite).
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(700);
     const entries = await fetch(BASE + "/api/entries?from=2026-07-30&to=2026-07-30").then((r) => r.json());
-    const mine = entries.filter((e) => e.workerId === "wk_e2e");
+    const mine = entries.filter((e) => e.workerId === "wk_e2e" && !e.deleted);
     assert(mine.length === 1, `1 pointage attendu côté serveur, reçu ${mine.length}`);
     assert(mine[0].minutes === 480, `480 min attendues, reçu ${mine[0].minutes}`);
     console.log("✓ Pointage synchronisé et persistant (SQLite)");
 
-    // Tableau de bord : la synthèse doit refléter 8 h.
-    await page.click('[data-tab="dashboard"]');
-    await page.fill("#dash-date", "2026-07-30");
-    await page.waitForSelector(".kpi");
-    const workedText = await page.locator(".kpi .v").first().innerText();
-    assert(workedText.replace(",", ".").trim() === "8", `KPI heures = ${workedText}, attendu 8`);
-    console.log("✓ Tableau de bord agrège correctement (8 h)");
-
-    // Coût : 8h×20 + panier 10 + déplacement 8 = 178 €.
-    await page.waitForSelector("text=Coût estimé");
-    const costTotal = await page.locator(".kpi .v").nth(4).innerText();
+    // Rapports : total heures et coût (8h×20 + panier 10 + déplacement 8 = 178 €).
+    await page.click('.tabbar button[data-tab="rapports"]');
+    await page.fill("#rp-date", "2026-07-30");
+    await page.waitForSelector("#rp-total-hours");
+    const workedText = await page.locator("#rp-total-hours").innerText();
+    assert(workedText.includes("8h00"), `total heures = ${workedText}, attendu 8h00`);
+    console.log("✓ Rapports : total heures correct (8h00)");
+    const costTotal = await page.locator("#rp-total-cost").innerText();
     assert(costTotal.includes("178"), `coût total = ${costTotal}, attendu ~178 €`);
-    console.log("✓ Coût estimé correct (178 €)");
+    console.log("✓ Rapports : coût estimé correct (178 €)");
 
     assert(errors.length === 0, `erreurs JS dans la page: ${errors.join(" | ")}`);
     console.log("\n✅ E2E OK — parcours complet validé (UI → IndexedDB → API → SQLite → rapports)");

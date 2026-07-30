@@ -59,6 +59,17 @@ export class Store {
     // on configure l'URL du serveur (ex. https://pointage.tdmi.fr) via l'écran
     // de réglages, persistée dans localStorage.
     this.apiBase = (typeof localStorage !== "undefined" && localStorage.getItem("apiBase")) || "";
+    // Nom du chef de chantier : tracé dans chaque pointage (champ recordedBy).
+    this.userName = (typeof localStorage !== "undefined" && localStorage.getItem("userName")) || "";
+  }
+
+  setUserName(name) {
+    this.userName = (name || "").trim();
+    try {
+      localStorage.setItem("userName", this.userName);
+    } catch {
+      /* stockage indisponible */
+    }
   }
 
   setApiBase(url) {
