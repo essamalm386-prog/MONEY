@@ -92,29 +92,88 @@ function ensureSpace(doc: Doc, needed: number): void {
   if (doc.y + needed > doc.page.height - doc.page.margins.bottom) doc.addPage();
 }
 
-// Colonnes du tableau de facturation (paysage).
+// Colonnes du relevé (format facture) : Désignation | Quantité | P.U. | Total.
 const COLS = {
-  week: { x: 40, w: 60 },
-  norm: { x: 105, w: 62, align: "right" as const },
-  ot25: { x: 172, w: 58, align: "right" as const },
-  ot50: { x: 235, w: 58, align: "right" as const },
-  ferie: { x: 298, w: 58, align: "right" as const },
-  intemp: { x: 361, w: 62, align: "right" as const },
-  panier: { x: 428, w: 62, align: "right" as const },
-  depl: { x: 495, w: 62, align: "right" as const },
-  total: { x: 562, w: 200, align: "right" as const },
+  label: { x: 40, w: 210 },
+  qty: { x: 258, w: 90, align: "right" as const },
+  pu: { x: 353, w: 90, align: "right" as const },
+  total: { x: 448, w: 107, align: "right" as const },
 };
 
 const hc = (n: number) => h(n).replace(" h", ""); // valeur d'heures sans unité
 
-/** Bloc « une personne » (relevé de facturation intérim, détaillé par semaine). */
+/** Une ligne « désignation / quantité / PU / total » du relevé. */
+function elementRow(doc: Doc, label: string, qty: string, pu: number, total: number): void {
+  ensureSpace(doc, 15);
+  tableRow(doc, [
+    { text: label, ...COLS.label },
+    { text: qty, ...COLS.qty },
+    { text: eur(pu), ...COLS.pu },
+    { text: eur(total), ...COLS.total },
+  ]);
+}
+
+/** Bloc facture pour une semaine d'un chantier (éléments en lignes). */
+function weekInvoiceBlock(
+  doc: Doc,
+  l: import("../core/index.js").BillingLine,
+  chantiers: Chantier[],
+): void {
+  ensureSpace(doc, 150);
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(9.5)
+    .fillColor("#1e293b")
+    .text(`${chantierLabel(chantiers, l.chantierId)} — Semaine ${l.weekLabel}`, 40, doc.y);
+  doc.moveDown(0.25);
+
+  // En-tête de colonnes
+  tableRow(
+    doc,
+    [
+      { text: "Désignation", ...COLS.label },
+      { text: "Quantité", ...COLS.qty },
+      { text: "P.U.", ...COLS.pu },
+      { text: "Total", ...COLS.total },
+    ],
+    { bold: true, color: "#475569" },
+  );
+
+  const u = l.unit;
+  const a = l.amounts;
+  elementRow(doc, "Heures normales", `${hc(l.normalHours)} h`, u.normal, a.normal);
+  elementRow(doc, "Heures sup. +25 %", `${hc(l.overtime25Hours)} h`, u.ot25, a.ot25);
+  elementRow(doc, "Heures sup. +50 %", `${hc(l.overtime50Hours)} h`, u.ot50, a.ot50);
+  elementRow(doc, "Heures fériées", `${hc(l.holidayHours)} h`, u.holiday, a.holiday);
+  elementRow(doc, "Intempéries", `${hc(l.weatherHours)} h`, u.weather, a.weather);
+  elementRow(doc, "Paniers repas", String(l.mealCount), u.meal, a.meal);
+  elementRow(doc, "Indemnités déplacement", String(l.travelCount), u.travel, a.travel);
+
+  // Total général de la semaine
+  const y = doc.y + 1;
+  doc.strokeColor("#cbd5e1").moveTo(258, y).lineTo(555, y).stroke();
+  doc.y = y + 3;
+  tableRow(
+    doc,
+    [
+      { text: "TOTAL GÉNÉRAL", ...COLS.label },
+      { text: "", ...COLS.qty },
+      { text: "", ...COLS.pu },
+      { text: eur(l.total), ...COLS.total },
+    ],
+    { bold: true, color: "#0f172a" },
+  );
+  doc.moveDown(0.5);
+}
+
+/** Bloc « une personne » : ses semaines de facturation, regroupées par chantier. */
 function billingWorkerBlock(
   doc: Doc,
   s: BillingStatement,
   chantiers: Chantier[],
   agency: Agency | undefined,
 ): void {
-  ensureSpace(doc, 120);
+  ensureSpace(doc, 60);
   doc
     .font("Helvetica-Bold")
     .fontSize(11)
@@ -126,78 +185,17 @@ function billingWorkerBlock(
     .text(
       `   ${s.worker.trade ?? ""}${s.worker.category ? " · " + s.worker.category : ""}${agency ? " · " + agency.name : ""}`,
     );
-  doc.moveDown(0.3);
+  doc.moveDown(0.4);
 
-  // Regroupe les lignes par chantier.
-  const byChantier = new Map<string, typeof s.lines>();
-  for (const l of s.lines) (byChantier.get(l.chantierId) ?? byChantier.set(l.chantierId, []).get(l.chantierId)!).push(l);
+  // Une facture par (chantier × semaine), triée par chantier puis semaine.
+  for (const l of s.lines) weekInvoiceBlock(doc, l, chantiers);
 
-  for (const [chantierId, lines] of byChantier) {
-    ensureSpace(doc, 70);
-    const pu = lines[0]!.unit;
-    doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#1e293b").text(chantierLabel(chantiers, chantierId), 40, doc.y);
-    doc
-      .font("Helvetica")
-      .fontSize(8)
-      .fillColor("#64748b")
-      .text(
-        `PU — Normale ${eur(pu.normal)} · +25% ${eur(pu.ot25)} · +50% ${eur(pu.ot50)} · Fériée ${eur(pu.holiday)} · Intemp. ${eur(pu.weather)} · Panier ${eur(pu.meal)} · Dépl. ${eur(pu.travel)}`,
-        40,
-        doc.y + 2,
-      );
-    doc.moveDown(0.3);
-
-    // En-tête du tableau
-    tableRow(
-      doc,
-      [
-        { text: "Semaine", ...COLS.week },
-        { text: "H norm.", ...COLS.norm },
-        { text: "H +25%", ...COLS.ot25 },
-        { text: "H +50%", ...COLS.ot50 },
-        { text: "Fériées", ...COLS.ferie },
-        { text: "Intemp.", ...COLS.intemp },
-        { text: "Paniers", ...COLS.panier },
-        { text: "Dépl.", ...COLS.depl },
-        { text: "Total", ...COLS.total },
-      ],
-      { bold: true, color: "#475569" },
-    );
-
-    let cTotal = 0;
-    for (const l of lines) {
-      ensureSpace(doc, 16);
-      tableRow(doc, [
-        { text: l.weekLabel, ...COLS.week },
-        { text: hc(l.normalHours), ...COLS.norm },
-        { text: hc(l.overtime25Hours), ...COLS.ot25 },
-        { text: hc(l.overtime50Hours), ...COLS.ot50 },
-        { text: hc(l.holidayHours), ...COLS.ferie },
-        { text: hc(l.weatherHours), ...COLS.intemp },
-        { text: String(l.mealCount), ...COLS.panier },
-        { text: String(l.travelCount), ...COLS.depl },
-        { text: eur(l.total), ...COLS.total },
-      ]);
-      cTotal += l.total;
-    }
-    // Sous-total chantier
-    tableRow(
-      doc,
-      [
-        { text: `Sous-total ${chantierLabel(chantiers, chantierId)}`, x: 40, w: 500 },
-        { text: eur(Math.round(cTotal * 100) / 100), ...COLS.total },
-      ],
-      { bold: true, color: "#0f172a" },
-    );
-    doc.moveDown(0.3);
-  }
-
-  // Total personne
-  doc.moveDown(0.1);
+  // Total de la personne
+  ensureSpace(doc, 24);
   tableRow(
     doc,
     [
-      { text: `TOTAL ${s.worker.lastName.toUpperCase()} ${s.worker.firstName} — ${hc(s.totalHours)} h`, x: 40, w: 500 },
+      { text: `TOTAL ${s.worker.lastName.toUpperCase()} ${s.worker.firstName} — ${hc(s.totalHours)} h`, x: 40, w: 400 },
       { text: eur(s.total), ...COLS.total },
     ],
     { bold: true, color: "#0f172a", size: 10 },
@@ -205,7 +203,7 @@ function billingWorkerBlock(
   const right = doc.page.width - doc.page.margins.right;
   doc.moveDown(0.3);
   doc.strokeColor("#e2e8f0").moveTo(40, doc.y).lineTo(right, doc.y).stroke();
-  doc.moveDown(0.5);
+  doc.moveDown(0.6);
 }
 
 function billingByAgency(statements: BillingStatement[]): Map<string, BillingStatement[]> {
@@ -224,7 +222,7 @@ export async function interimBillingPdf(
   month: string,
   filterLabel?: string,
 ): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 40, bufferPages: true });
+  const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
   header(
     doc,
     "Relevé de facturation intérim (ETT)",
