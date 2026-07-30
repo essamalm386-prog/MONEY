@@ -36,9 +36,16 @@ async function main() {
   page.on("console", (m) => m.type() === "error" && errors.push("console: " + m.text()));
 
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
-  // Cale la date sur le jeu de démonstration.
-  await page.evaluate(() => localStorage.setItem("demoDate", "1"));
   await page.waitForTimeout(600);
+
+  // Écran de bienvenue : capture puis fermeture.
+  const skip = page.locator("#splash-skip");
+  if (await skip.isVisible().catch(() => false)) {
+    await page.screenshot({ path: join(OUT, "splash.png") });
+    console.log(`✓ Bienvenue → ${join(OUT, "splash.png")}`);
+    await skip.click();
+    await page.waitForTimeout(250);
+  }
 
   for (const [tab, label] of TABS) {
     await page.click(`.tabbar button[data-tab="${tab}"]`);

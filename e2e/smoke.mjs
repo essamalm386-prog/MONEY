@@ -96,6 +96,13 @@ async function main() {
 
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
 
+    // Écran de bienvenue au premier lancement : on le passe.
+    const skip = page.locator("#splash-skip");
+    if (await skip.isVisible().catch(() => false)) {
+      await skip.click();
+      console.log("✓ Écran de bienvenue affiché puis passé");
+    }
+
     // Onglet Pointage, date connue.
     await page.click('.tabbar button[data-tab="pointage"]');
     await page.fill("#f-date", "2026-07-30");

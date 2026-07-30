@@ -1,9 +1,9 @@
 /**
  * TDMI Pointage — application PWA.
  *
- * Cinq écrans : Accueil, Pointage, Équipe (planning), Rapports, Profil.
- * Toute la logique métier vit dans `domain.js` (calculs) et `store.js`
- * (persistance locale IndexedDB + synchronisation serveur).
+ * Cinq écrans : Accueil, Pointage, Équipe (planning), Rapports, Profil,
+ * plus un écran de bienvenue au premier lancement. Toute la logique métier
+ * vit dans `domain.js` (calculs) et `store.js` (IndexedDB + synchro).
  */
 import { Store } from "./store.js";
 import {
@@ -39,12 +39,40 @@ const state = {
   tab: "accueil",
   date: today(),
   chantierId: "",
-  period: "semaine", // rapports : jour | semaine | mois
+  period: "semaine",
   planWeek: today(),
-  showAll: false, // pointage : afficher hors affectation
+  showAll: false,
+  showAllCh: false,
   ref: { chantiers: [], workers: [], agencies: [], assignments: [], costs: [] },
   entries: [],
 };
+
+/* ===================================================================== */
+/*  Icônes vectorielles (trait 1.8, cohérentes avec la maquette)         */
+/* ===================================================================== */
+
+const I = {
+  bell: `<svg class="ic" viewBox="0 0 24 24"><path d="M18 8.4a6 6 0 1 0-12 0c0 6-2.5 7.2-2.5 7.2h17S18 14.4 18 8.4"/><path d="M10.3 20a2 2 0 0 0 3.4 0"/></svg>`,
+  back: `<svg class="ic" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>`,
+  calendar: `<svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10.5h17"/></svg>`,
+  clock: `<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>`,
+  sync: `<svg class="ic" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3M4 13a8 8 0 0 0 14.9 3"/><path d="M20 4v4h-4M4 20v-4h4"/></svg>`,
+  check: `<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.3l2.4 2.4 4.8-5"/></svg>`,
+  chevR: `<svg class="ic" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>`,
+  doc: `<svg class="ic" viewBox="0 0 24 24"><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9.5 13h6M9.5 17h6"/></svg>`,
+  gear: `<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.14-1.4l2-1.55-2-3.46-2.36.95a7 7 0 0 0-2.42-1.4L13.7 2.6h-3.4l-.38 2.54a7 7 0 0 0-2.42 1.4l-2.36-.95-2 3.46 2 1.55A7 7 0 0 0 5 12c0 .48.05.94.14 1.4l-2 1.55 2 3.46 2.36-.95a7 7 0 0 0 2.42 1.4l.38 2.54h3.4l.38-2.54a7 7 0 0 0 2.42-1.4l2.36.95 2-3.46-2-1.55c.09-.46.14-.92.14-1.4z"/></svg>`,
+  plus: `<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>`,
+  alert: `<svg class="ic" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4.5M12 17.6v.1"/></svg>`,
+  rain: `<svg class="ic" viewBox="0 0 24 24"><path d="M17.5 13a4.5 4.5 0 0 0-.9-8.9A6 6 0 0 0 5 6.5 4 4 0 0 0 6 14.5h11.5z"/><path d="M8 17l-1 3M12.5 17l-1 3M17 17l-1 3"/></svg>`,
+  helmet: `<svg class="ic" viewBox="0 0 24 24"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M2.8 15h18.4v2.6H2.8z"/><path d="M12 5v3"/></svg>`,
+};
+
+/** Silhouette de grue (filigrane du bandeau chantier + splash). */
+const CRANE = `<svg viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+  <path d="M30 112V30M38 112V30"/><path d="M30 40h8M30 56h8M30 72h8M30 88h8M30 104h8"/>
+  <path d="M30 34l8 10M38 34l-8 10M30 50l8 10M38 50l-8 10M30 66l8 10M38 66l-8 10M30 82l8 10M38 82l-8 10"/>
+  <path d="M14 30h96M34 14l60 16M34 14 14 30M34 14v16"/><path d="M96 30v22M90 52h12M96 74v-22" stroke-dasharray="0"/>
+  <path d="M8 112h116" opacity=".6"/></svg>`;
 
 /* ===================================================================== */
 /*  Utilitaires                                                          */
@@ -64,14 +92,9 @@ function toast(msg, kind = "ok") {
   toast._t = setTimeout(() => (t.className = "toast"), 2600);
 }
 
-/** Minutes → "8h00" / "7h30" (format terrain). */
 function fmtHM(minutes) {
   const m = Math.max(0, Math.round(minutes));
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
-}
-/** Minutes → "8,5 h" (format synthèse). */
-function fmtH(minutes) {
-  return `${minutesToHours(minutes).toLocaleString("fr-FR")} h`;
 }
 function fmtEur(n) {
   return `${(Math.round(n * 100) / 100).toLocaleString("fr-FR", {
@@ -80,53 +103,52 @@ function fmtEur(n) {
   })} €`;
 }
 function fmtDateLong(iso) {
-  const d = new Date(iso + "T00:00:00Z");
-  return d.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("fr-FR", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
   });
 }
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-/** "2026-07-27" → "27/07" (affichage compact des périodes). */
 function fmtDayMonth(iso) {
   const [, m, d] = iso.split("-");
   return `${d}/${m}`;
 }
 
-const AVATAR_COLORS = ["#e08600", "#1ca9e0", "#16a34a", "#6d4bc4", "#e5484d", "#0b7fae", "#c2410c"];
+/* Avatar ouvrier casqué (SVG) : fond pastel + teint déterministes, couleur
+   de casque selon le statut (intérim orange, salarié bleu, stagiaire violet,
+   alternant vert) — écho des photos casquées de la maquette. */
+const AV_BG = ["#ffedd2", "#ddeeff", "#e0f5e6", "#efe7fd", "#ffe3e0", "#e4f3f9", "#f4ead8"];
+const AV_SKIN = ["#f4c9a4", "#e8b48c", "#c98e5f", "#a9714b", "#8a5a3b", "#6f4630"];
+const HELMET = { EMPLOYE: "#1ca9e0", INTERIMAIRE: "#f5a623", STAGIAIRE: "#8a63d2", ALTERNANT: "#2fae5f" };
+
 function avatarFor(w) {
-  const initials = `${(w.firstName || "?")[0]}${(w.lastName || "")[0] || ""}`.toUpperCase();
-  let hash = 0;
-  for (const ch of w.id || initials) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const bg = AVATAR_COLORS[hash % AVATAR_COLORS.length];
-  const helmet = { EMPLOYE: "#1ca9e0", INTERIMAIRE: "#f39200", STAGIAIRE: "#6d4bc4", ALTERNANT: "#16a34a" }[w.type] || "#8b95a7";
-  return `<div class="avatar" style="background:${bg}">${esc(initials)}<span class="helmet" style="background:${helmet}"></span></div>`;
+  let h = 0;
+  for (const ch of w.id || "x") h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const bg = AV_BG[h % AV_BG.length];
+  const skin = AV_SKIN[(h >> 3) % AV_SKIN.length];
+  const hat = HELMET[w.type] || "#98a2b3";
+  return `<span class="avatar"><svg viewBox="0 0 44 44">
+    <circle cx="22" cy="22" r="22" fill="${bg}"/>
+    <path d="M8 44a14 11 0 0 1 28 0z" fill="#5b6b7d"/>
+    <circle cx="22" cy="24.5" r="8.2" fill="${skin}"/>
+    <path d="M13.2 21.5a8.8 8.8 0 0 1 17.6 0z" fill="${hat}"/>
+    <rect x="11.6" y="20.6" width="20.8" height="2.6" rx="1.3" fill="${hat}"/>
+  </svg></span>`;
 }
 
-function workerById(id) {
-  return state.ref.workers.find((w) => w.id === id);
-}
+function workerById(id) { return state.ref.workers.find((w) => w.id === id); }
 function workerName(id) {
   const w = workerById(id);
   return w ? `${w.firstName} ${w.lastName}` : id;
 }
-function chantierById(id) {
-  return state.ref.chantiers.find((c) => c.id === id);
-}
-function chantierName(id) {
-  return chantierById(id)?.name ?? id;
-}
+function chantierById(id) { return state.ref.chantiers.find((c) => c.id === id); }
+function chantierName(id) { return chantierById(id)?.name ?? id; }
 function agencyName(id) {
   if (id === "INTERNE" || !id) return "Salariés internes";
   return state.ref.agencies.find((a) => a.id === id)?.name ?? id;
 }
 
-/** Personnes affectées à un chantier une date donnée. */
 function assignedIdsForDate(chantierId, date) {
   const ids = new Set();
   for (const a of state.ref.assignments) {
@@ -138,7 +160,6 @@ function assignedIdsForDate(chantierId, date) {
   return ids;
 }
 
-/** Bornes lundi→dimanche de la semaine contenant `anyDate`. */
 function weekBounds(anyDate) {
   const wd = new Date(anyDate + "T00:00:00Z").getUTCDay();
   const iso = wd === 0 ? 7 : wd;
@@ -147,6 +168,11 @@ function weekBounds(anyDate) {
   const sunday = new Date(monday);
   sunday.setUTCDate(sunday.getUTCDate() + 6);
   return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+}
+function shiftDate(iso, days) {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 function entriesForDate(date, chantierId) {
@@ -165,24 +191,39 @@ function renderAppbar() {
     pointage: "Pointer les heures",
     equipe: "Équipe & planning",
     rapports: "Rapports",
-    profil: "Profil & réglages",
+    profil: "Profil",
   };
   if (state.tab === "accueil") {
+    const accidentsToday = entriesForDate(today()).filter((e) => e.kind === "ACCIDENT").length;
     bar.className = "appbar";
     bar.innerHTML = `
       <div class="hello">
         <div class="sub">Bonjour,</div>
         <div class="name">${esc(store.userName || "Chef de chantier")} <span>👋</span></div>
       </div>
-      <button class="iconbtn" id="hdr-settings" title="Réglages" aria-label="Réglages">⚙️</button>`;
-    el("hdr-settings").onclick = openSettings;
+      <button class="iconbtn" id="hdr-bell" aria-label="Notifications">${I.bell}${accidentsToday ? `<span class="badge-dot"></span>` : ""}</button>`;
+    el("hdr-bell").onclick = async () => {
+      const p = await store.pendingCount();
+      const parts = [];
+      if (accidentsToday) parts.push(`${accidentsToday} accident(s) déclaré(s) aujourd'hui`);
+      if (p) parts.push(`${p} pointage(s) à synchroniser`);
+      toast(parts.join(" · ") || "Aucune notification");
+    };
   } else {
     bar.className = "appbar compact";
     bar.innerHTML = `
-      <img class="logo" src="/icons/tdmi-logo.svg" alt="TDMI" />
+      <button class="iconbtn plain" id="hdr-back" aria-label="Retour">${I.back}</button>
       <div class="title">${esc(titles[state.tab] ?? "")}</div>
-      <button class="iconbtn" id="hdr-sync" title="Synchroniser" aria-label="Synchroniser">⟳</button>`;
-    el("hdr-sync").onclick = async () => {
+      <button class="iconbtn plain" id="hdr-action" aria-label="${state.tab === "pointage" ? "Calendrier" : "Synchroniser"}">
+        ${state.tab === "pointage" ? I.calendar : I.sync}
+      </button>`;
+    el("hdr-back").onclick = () => setTab("accueil");
+    el("hdr-action").onclick = async () => {
+      if (state.tab === "pointage") {
+        const d = el("f-date");
+        if (d) (d.showPicker ? d.showPicker() : d.focus());
+        return;
+      }
       try {
         await store.sync();
         await reload();
@@ -200,19 +241,66 @@ async function renderNetbar() {
   if (!store.online) {
     bar.hidden = false;
     bar.className = "netbar offline";
-    bar.innerHTML = `🔌 Hors-ligne — la saisie reste possible, elle sera synchronisée au retour du réseau${pending ? ` (${pending} en attente)` : ""}.`;
+    bar.textContent = `Hors-ligne — la saisie reste possible, synchronisation au retour du réseau${pending ? ` (${pending} en attente)` : ""}.`;
   } else if (pending > 0) {
     bar.hidden = false;
     bar.className = "netbar pending";
-    bar.innerHTML = `⟳ ${pending} pointage(s) en cours de synchronisation…`;
+    bar.textContent = `${pending} pointage(s) en cours de synchronisation…`;
   } else {
     bar.hidden = true;
   }
 }
 
 /* ===================================================================== */
+/*  Écran de bienvenue (premier lancement)                               */
+/* ===================================================================== */
+
+function maybeShowSplash() {
+  let seen = "1";
+  try { seen = localStorage.getItem("onboarded") || ""; } catch { /* ok */ }
+  if (seen) return;
+  const sp = document.createElement("div");
+  sp.className = "splash";
+  sp.id = "splash";
+  sp.innerHTML = `
+    <div class="scene" style="color:#9db3c8">
+      <div style="position:absolute;right:-12px;bottom:0;width:230px;height:230px">${CRANE}</div>
+      <div style="position:absolute;left:-30px;bottom:0;width:170px;height:170px;transform:scaleX(-1)">${CRANE}</div>
+    </div>
+    <div class="brand"><img src="/icons/tdmi-logo.svg" alt="TDMI" /></div>
+    <div class="grow"></div>
+    <h1>Le pointage simple pour des chantiers efficaces</h1>
+    <p class="lead">Suivez les heures de votre équipe en toute simplicité — même sans réseau sur le chantier.</p>
+    <button class="btn block" id="splash-start">Commencer</button>
+    <button class="btn block ghost-dark" id="splash-skip">Découvrir l'application</button>`;
+  document.body.appendChild(sp);
+  const done = () => {
+    try { localStorage.setItem("onboarded", "1"); } catch { /* ok */ }
+    sp.remove();
+  };
+  sp.querySelector("#splash-start").onclick = () => {
+    done();
+    openSettings();
+  };
+  sp.querySelector("#splash-skip").onclick = done;
+}
+
+/* ===================================================================== */
 /*  ÉCRAN 1 — ACCUEIL                                                    */
 /* ===================================================================== */
+
+function siteCardHtml(label, name, meta) {
+  return `
+    <button class="site-card" id="pick-site">
+      <div class="crane">${CRANE}</div>
+      <div class="txt">
+        <div class="label">${esc(label)}</div>
+        <div class="name">${esc(name)}</div>
+        <div class="meta">${esc(meta)}</div>
+      </div>
+      <span class="chev">${I.chevR}</span>
+    </button>`;
+}
 
 function renderAccueil() {
   const { chantiers, workers } = state.ref;
@@ -230,36 +318,31 @@ function renderAccueil() {
   const totalMin = dayEntries.reduce((s, e) => s + (e.kind === "TRAVAIL" || e.kind === "ACCIDENT" ? e.minutes : 0), 0);
   const notPointed = team.filter((w) => !byWorker.has(w.id)).length;
 
-  // Alertes du jour : accidents déclarés, intempéries
   const accidents = dayEntries.filter((e) => e.kind === "ACCIDENT");
   const weather = dayEntries.filter((e) => e.kind === "INTEMPERIE");
 
   view().innerHTML = `
-    <button class="site-card" id="pick-site">
-      <div class="ic">🏗️</div>
-      <div class="txt">
-        <div class="label">Chantier en cours</div>
-        <div class="name">${ch ? esc(ch.name) : "Aucun chantier"}</div>
-        <div class="meta">${ch ? esc([ch.code, ch.address, ch.client].filter(Boolean).join(" · ")) : "Créez un chantier dans Profil"}</div>
-      </div>
-      <div class="chev">›</div>
-    </button>
+    ${siteCardHtml(
+      "Chantier en cours",
+      ch ? ch.name : "Aucun chantier",
+      ch ? [ch.address, ch.client].filter(Boolean).join(" · ") || ch.code : "Créez un chantier dans Profil",
+    )}
 
     <div class="card">
-      <div class="card-head">
+      <div class="card-head" style="margin-bottom:14px">
         <div>
           <div class="sub">Aujourd'hui</div>
-          <h2>${capitalize(fmtDateLong(date))}</h2>
+          <h2 style="font-size:17px">${capitalize(fmtDateLong(date))}</h2>
         </div>
-        <button class="iconbtn" id="go-date" title="Changer de date">📅</button>
+        <button class="iconbtn" id="go-date" aria-label="Changer de date">${I.calendar}</button>
       </div>
       <div class="stat-row">
         <div class="stat ok"><div class="v">${present}</div><div class="l">Présents</div></div>
         <div class="stat danger"><div class="v">${absent}</div><div class="l">Absents</div></div>
-        <div class="stat navy"><div class="v">${fmtHM(totalMin)}</div><div class="l">Heures totales</div></div>
+        <div class="stat"><div class="v">${fmtHM(totalMin)}</div><div class="l">Heures totales</div></div>
       </div>
       <button class="btn block" id="go-point" style="margin-top:14px">
-        🕒 Pointer les heures${notPointed ? ` (${notPointed} restant${notPointed > 1 ? "s" : ""})` : ""}
+        ${I.clock} Pointer les heures${notPointed ? ` (${notPointed} restant${notPointed > 1 ? "s" : ""})` : ""}
       </button>
     </div>
 
@@ -270,8 +353,11 @@ function renderAccueil() {
              ${accidents
                .map(
                  (e) => `<div class="rowline">
-                    <div><div style="font-weight:650">⚠️ Accident — ${esc(workerName(e.workerId))}</div>
-                    <div class="muted">${esc(SEVERITY_LABEL[e.accidentSeverity] || "")}${e.note ? " · " + esc(e.note) : ""}</div></div>
+                    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                      <span style="color:var(--danger)">${I.alert}</span>
+                      <div style="min-width:0"><div style="font-weight:700">Accident — ${esc(workerName(e.workerId))}</div>
+                      <div class="muted">${esc(SEVERITY_LABEL[e.accidentSeverity] || "")}${e.note ? " · " + esc(e.note) : ""}</div></div>
+                    </div>
                     <span class="chip alert">48 h</span>
                   </div>`,
                )
@@ -279,8 +365,11 @@ function renderAccueil() {
              ${weather
                .map(
                  (e) => `<div class="rowline">
-                    <div><div style="font-weight:650">🌧️ Intempérie — ${esc(workerName(e.workerId))}</div>
-                    <div class="muted">${fmtHM(e.minutes)} perdues${e.note ? " · " + esc(e.note) : ""}</div></div>
+                    <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                      <span style="color:var(--info)">${I.rain}</span>
+                      <div style="min-width:0"><div style="font-weight:700">Intempérie — ${esc(workerName(e.workerId))}</div>
+                      <div class="muted">${fmtHM(e.minutes)} perdues${e.note ? " · " + esc(e.note) : ""}</div></div>
+                    </div>
                     <span class="chip INTEMPERIE">Intempérie</span>
                   </div>`,
                )
@@ -293,15 +382,15 @@ function renderAccueil() {
       <div class="card-head">
         <div>
           <h2>Mon équipe</h2>
-          <div class="sub">${team.length} personne${team.length > 1 ? "s" : ""} affectée${team.length > 1 ? "s" : ""}</div>
+          <div class="sub">${team.length} personne${team.length > 1 ? "s" : ""}</div>
         </div>
         <button class="link" id="see-team">Voir tout</button>
       </div>
       ${
         team.length === 0
-          ? `<div class="empty"><span class="ic">👷</span>Personne n'est affecté à ce chantier aujourd'hui.<br/>Constituez l'équipe dans l'onglet <strong>Équipe</strong>.</div>`
+          ? `<div class="empty">Personne n'est affecté à ce chantier aujourd'hui.<br/>Constituez l'équipe dans l'onglet <strong>Équipe</strong>.</div>`
           : team
-              .slice(0, 5)
+              .slice(0, 6)
               .map((w) => {
                 const e = byWorker.get(w.id);
                 return `<div class="person">
@@ -311,6 +400,7 @@ function renderAccueil() {
                     <div class="t">${esc(w.trade || TYPE_LABEL[w.type] || "")}</div>
                   </div>
                   ${entryBadge(e)}
+                  <button class="kebab" data-kebab="${w.id}" aria-label="Détails">⋮</button>
                 </div>`;
               })
               .join("")
@@ -321,12 +411,17 @@ function renderAccueil() {
   el("go-date").onclick = () => setTab("pointage");
   el("go-point").onclick = () => setTab("pointage");
   el("see-team").onclick = () => setTab("equipe");
+  view().querySelectorAll("[data-kebab]").forEach((b) => {
+    b.onclick = () => {
+      state.date = today();
+      openEntrySheet(b.dataset.kebab);
+    };
+  });
 }
 
-/** Pastille d'état d'un pointage (liste d'accueil). */
 function entryBadge(e) {
   if (!e) return `<span class="chip neutral">Non pointé</span>`;
-  if (e.kind === "TRAVAIL") return `<strong style="color:var(--ok)">${fmtHM(e.minutes)}</strong>`;
+  if (e.kind === "TRAVAIL") return `<span class="hours ok">${fmtHM(e.minutes)}</span>`;
   if (e.kind === "ACCIDENT") return `<span class="chip ACCIDENT">Accident</span>`;
   if (e.kind === "INTEMPERIE") return `<span class="chip INTEMPERIE">${fmtHM(e.minutes)}</span>`;
   return `<span class="chip ABSENCE">${esc(ABSENCE_LABEL[e.absenceReason] || "Absent")}</span>`;
@@ -336,8 +431,8 @@ function entryBadge(e) {
 /*  ÉCRAN 2 — POINTAGE                                                   */
 /* ===================================================================== */
 
-const STEP = 30; // pas du stepper, en minutes
-const DEFAULT_MIN = 480; // journée type : 8 h
+const STEP = 30;
+const DEFAULT_MIN = 480;
 
 function renderPointage() {
   const { chantiers, workers } = state.ref;
@@ -361,15 +456,7 @@ function renderPointage() {
   const missing = team.filter((w) => !byWorker.has(w.id)).length;
 
   view().innerHTML = `
-    <button class="site-card" id="pick-site">
-      <div class="ic">🏗️</div>
-      <div class="txt">
-        <div class="label">${ch ? esc(ch.code || "Chantier") : "Chantier"}</div>
-        <div class="name">${ch ? esc(ch.name) : "Aucun chantier"}</div>
-        <div class="meta">${capitalize(fmtDateLong(state.date))}</div>
-      </div>
-      <div class="chev">›</div>
-    </button>
+    ${siteCardHtml(ch?.code || "Chantier", ch ? ch.name : "Aucun chantier", capitalize(fmtDateLong(state.date)))}
 
     <div class="card tight">
       <label class="f" style="margin-top:0">Date du pointage</label>
@@ -389,16 +476,16 @@ function renderPointage() {
       </div>
       ${
         team.length === 0
-          ? `<div class="empty"><span class="ic">👷</span>Aucune personne affectée à ce chantier ce jour.<br/>
-             Affectez l'équipe dans l'onglet <strong>Équipe</strong>, ou utilisez « Tous » pour un ajout exceptionnel.</div>`
+          ? `<div class="empty">Aucune personne affectée à ce chantier ce jour.<br/>
+             Affectez l'équipe dans l'onglet <strong>Équipe</strong>, ou « Tous » pour un ajout exceptionnel.</div>`
           : team.map((w) => personRow(w, byWorker.get(w.id), assigned.has(w.id))).join("")
       }
     </div>
-    <div style="height:56px"></div>
+    <div style="height:58px"></div>
 
     <div class="action-bar">
       <div class="inner">
-        <button class="btn block" id="finish">✓ Journée enregistrée — ${fmtHM(totalMin)}</button>
+        <button class="btn block" id="finish">${I.check} Enregistrer (${fmtHM(totalMin)})</button>
       </div>
     </div>`;
 
@@ -413,7 +500,7 @@ function renderPointage() {
   };
   el("all-point").onclick = () => pointAll(team, byWorker);
   el("finish").onclick = () => {
-    toast(`Journée du ${state.date} : ${fmtHM(totalMin)}`);
+    toast(`Journée du ${fmtDayMonth(state.date)} enregistrée — ${fmtHM(totalMin)}`);
     setTab("accueil");
   };
 
@@ -432,13 +519,17 @@ function renderPointage() {
 }
 
 function personRow(w, e, isAssigned) {
+  // Code couleur maquette : 0h rouge, journée standard encre, durée modifiée orange.
   let cls = "zero";
   let label = "0h00";
   if (e) {
     if (e.kind === "TRAVAIL" || e.kind === "ACCIDENT") {
       label = fmtHM(e.minutes);
-      cls = e.kind === "ACCIDENT" ? "special" : e.minutes >= 420 ? "ok" : e.minutes > 0 ? "warn" : "zero";
-      if (e.kind === "ACCIDENT") label = "Accident";
+      cls = e.minutes === 0 ? "zero" : e.minutes === DEFAULT_MIN ? "" : "warn";
+      if (e.kind === "ACCIDENT") {
+        label = "Accident";
+        cls = "special";
+      }
     } else if (e.kind === "INTEMPERIE") {
       label = "Intemp.";
       cls = "special";
@@ -464,7 +555,6 @@ function personRow(w, e, isAssigned) {
     </div>`;
 }
 
-/** Incrémente / décrémente les heures d'un ouvrier (enregistrement immédiat). */
 async function adjust(workerId, dir) {
   const existing = entriesForDate(state.date, state.chantierId).find((e) => e.workerId === workerId);
   if (existing && existing.kind !== "TRAVAIL") return;
@@ -487,7 +577,6 @@ async function adjust(workerId, dir) {
   }
 }
 
-/** Pointe d'un coup toutes les personnes non encore pointées (journée type). */
 async function pointAll(team, byWorker) {
   const todo = team.filter((w) => !byWorker.has(w.id));
   if (!todo.length) return;
@@ -587,7 +676,7 @@ function fieldsFor(kind, e) {
       </div>
       <label class="f">Pause (minutes)</label>
       <input type="number" id="break" min="0" step="5" value="${e?.breakMinutes ?? 60}" />
-      <p class="hint">Les heures supplémentaires sont calculées automatiquement à la semaine (35 h, puis +25 % et +50 %).</p>`;
+      <p class="hint">Les heures supplémentaires sont calculées à la semaine (35 h, puis +25 % et +50 %).</p>`;
   }
   if (kind === "INTEMPERIE") {
     return `
@@ -595,7 +684,7 @@ function fieldsFor(kind, e) {
       <input type="number" id="hours" min="0" step="0.5" value="${e?.minutes ? minutesToHours(e.minutes) : 4}" />
       <label class="f">Motif</label>
       <textarea id="note" rows="2" placeholder="Pluie, gel, vent…">${esc(e?.note || "")}</textarea>
-      <p class="hint">Chômage-intempéries : la 1re heure est en franchise, le reste est indemnisé à 75 %.</p>`;
+      <p class="hint">Chômage-intempéries : 1re heure en franchise, le reste indemnisé à 75 %.</p>`;
   }
   if (kind === "ABSENCE") {
     return `
@@ -619,7 +708,7 @@ function fieldsFor(kind, e) {
     <input type="number" id="hours" min="0" step="0.5" value="${e?.minutes ? minutesToHours(e.minutes) : 0}" />
     <label class="f">Circonstances</label>
     <textarea id="note" rows="3" placeholder="Nature, partie du corps, tiers impliqué…">${esc(e?.note || "")}</textarea>
-    <p class="hint">⚠️ La déclaration d'accident du travail doit être transmise sous 48 h.</p>`;
+    <p class="hint">La déclaration d'accident du travail doit être transmise sous 48 h.</p>`;
 }
 
 function collectFields(kind, ov, workerId, existing) {
@@ -653,7 +742,6 @@ function collectFields(kind, ov, workerId, existing) {
   };
 }
 
-/** Sélecteur de chantier. */
 function openSitePicker() {
   const ov = document.createElement("div");
   ov.className = "overlay";
@@ -664,11 +752,14 @@ function openSitePicker() {
       <div class="sheet-sub">${state.ref.chantiers.length} chantier(s)</div>
       ${
         state.ref.chantiers.length === 0
-          ? `<div class="empty"><span class="ic">🏗️</span>Aucun chantier. Créez-en un dans l'onglet Profil.</div>`
+          ? `<div class="empty">Aucun chantier. Créez-en un dans l'onglet Profil.</div>`
           : state.ref.chantiers
               .map(
                 (c) => `<div class="person tappable" data-ch="${c.id}">
-                  <div class="avatar" style="background:${c.id === state.chantierId ? "var(--orange)" : "#8b95a7"}">🏗</div>
+                  <span class="avatar"><svg viewBox="0 0 44 44">
+                    <circle cx="22" cy="22" r="22" fill="${c.id === state.chantierId ? "#fff4e2" : "#eef2f6"}"/>
+                    <g transform="translate(10 10) scale(0.2)" stroke="${c.id === state.chantierId ? "#d97f00" : "#667085"}">${CRANE.replace(/<\/?svg[^>]*>/g, "")}</g>
+                  </svg></span>
                   <div class="who"><div class="n"><span class="txt">${esc(c.name)}</span></div>
                   <div class="t">${esc([c.code, c.client].filter(Boolean).join(" · "))}</div></div>
                   ${c.id === state.chantierId ? `<span class="chip orange">Actuel</span>` : ""}
@@ -708,15 +799,11 @@ function renderEquipe() {
   const available = workers.filter((w) => w.active && !activeIds.has(w.id));
 
   view().innerHTML = `
-    <button class="site-card" id="pick-site">
-      <div class="ic">🏗️</div>
-      <div class="txt">
-        <div class="label">Planning du chantier</div>
-        <div class="name">${esc(chantierName(state.chantierId))}</div>
-        <div class="meta">${isoWeekKey(state.planWeek).replace(/^\d+-W/, "Semaine ")} · ${fmtDayMonth(from)} → ${fmtDayMonth(to)}</div>
-      </div>
-      <div class="chev">›</div>
-    </button>
+    ${siteCardHtml(
+      "Planning du chantier",
+      chantierName(state.chantierId),
+      `${isoWeekKey(state.planWeek).replace(/^\d+-W/, "Semaine ")} · ${fmtDayMonth(from)} → ${fmtDayMonth(to)}`,
+    )}
 
     <div class="card tight">
       <label class="f" style="margin-top:0">Semaine (choisir un jour)</label>
@@ -730,7 +817,7 @@ function renderEquipe() {
       </div>
       ${
         weekAsg.length === 0
-          ? `<div class="empty"><span class="ic">📋</span>Aucune affectation cette semaine.</div>`
+          ? `<div class="empty">Aucune affectation cette semaine.</div>`
           : weekAsg
               .slice()
               .sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -763,8 +850,8 @@ function renderEquipe() {
              <select id="pl-worker">${available
                .map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)} — ${TYPE_LABEL[w.type]}${w.trade ? " · " + esc(w.trade) : ""}</option>`)
                .join("")}</select>
-             <button class="btn block" id="pl-add" style="margin-top:12px" ${offline ? "disabled" : ""}>+ Affecter pour la semaine</button>
-             ${offline ? `<p class="hint">🔌 Le planning nécessite une connexion.</p>` : ""}`
+             <button class="btn block" id="pl-add" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Affecter pour la semaine</button>
+             ${offline ? `<p class="hint">Le planning nécessite une connexion.</p>` : ""}`
       }
     </div>`;
 
@@ -807,7 +894,7 @@ function openReplaceSheet(assignmentId, weekAsg) {
     <div class="sheet">
       <div class="grab"></div>
       <h3>Remplacer ${esc(leaving ? leaving.firstName + " " + leaving.lastName : "")}</h3>
-      <div class="sheet-sub">Affectation du ${asg.startDate} au ${asg.endDate || "…"}</div>
+      <div class="sheet-sub">Affectation du ${fmtDayMonth(asg.startDate)} au ${asg.endDate ? fmtDayMonth(asg.endDate) : "…"}</div>
       <label class="f">Remplaçant</label>
       <select id="rep-worker">${candidates
         .map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)} — ${TYPE_LABEL[w.type]}${w.trade ? " · " + esc(w.trade) : ""}</option>`)
@@ -847,17 +934,34 @@ function openReplaceSheet(assignmentId, weekAsg) {
 /*  ÉCRAN 4 — RAPPORTS                                                   */
 /* ===================================================================== */
 
-function periodRange() {
-  if (state.period === "jour") return { from: state.date, to: state.date, label: capitalize(fmtDateLong(state.date)) };
+function periodRange(refDate = state.date) {
+  if (state.period === "jour") return { from: refDate, to: refDate, label: capitalize(fmtDateLong(refDate)) };
   if (state.period === "semaine") {
-    const { from, to } = weekBounds(state.date);
-    return { from, to, label: `${isoWeekKey(state.date).replace(/^\d+-W/, "Semaine ")} · ${from} → ${to}` };
+    const { from, to } = weekBounds(refDate);
+    return { from, to, label: `${isoWeekKey(refDate).replace(/^\d+-W/, "Semaine ")} · ${fmtDayMonth(from)} → ${fmtDayMonth(to)}` };
   }
-  const from = state.date.slice(0, 7) + "-01";
-  const [y, m] = state.date.split("-").map(Number);
+  const from = refDate.slice(0, 7) + "-01";
+  const [y, m] = refDate.split("-").map(Number);
   const to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-  return { from, to, label: `Mois de ${monthKey(state.date)}` };
+  return { from, to, label: `Mois de ${monthKey(refDate)}` };
 }
+
+/** Date de référence de la période précédente (pour la variation). */
+function previousRef() {
+  if (state.period === "jour") return shiftDate(state.date, -1);
+  if (state.period === "semaine") return shiftDate(state.date, -7);
+  const [y, m] = state.date.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return d.toISOString().slice(0, 10);
+}
+
+function workedMinutesIn(from, to) {
+  return state.entries
+    .filter((e) => !e.deleted && e.date >= from && e.date <= to && (e.kind === "TRAVAIL" || e.kind === "ACCIDENT"))
+    .reduce((s, e) => s + e.minutes, 0);
+}
+
+const PREV_LABEL = { jour: "vs veille", semaine: "vs semaine dernière", mois: "vs mois dernier" };
 
 function renderRapports() {
   const { from, to, label } = periodRange();
@@ -865,21 +969,27 @@ function renderRapports() {
   const t = totals(inRange);
   const cost = totalCost(inRange, state.ref.workers, state.ref.costs);
 
-  // Répartition par jour de la semaine (graphique à barres)
+  // Variation vs période précédente (pastille verte/rouge comme la maquette).
+  const prev = periodRange(previousRef());
+  const prevMin = workedMinutesIn(prev.from, prev.to);
+  let deltaHtml = "";
+  if (prevMin > 0) {
+    const pct = Math.round(((t.workedMinutes - prevMin) / prevMin) * 100);
+    deltaHtml = `<span class="delta ${pct >= 0 ? "up" : "down"}">${pct >= 0 ? "↑" : "↓"} ${pct >= 0 ? "+" : ""}${pct}%</span>`;
+  }
+
+  // Barres de la semaine avec axe des heures.
   const { from: wFrom } = weekBounds(state.date);
   const days = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
   const dayTotals = days.map((lb, i) => {
-    const d = new Date(wFrom + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() + i);
-    const iso = d.toISOString().slice(0, 10);
-    const mins = state.entries
-      .filter((e) => !e.deleted && e.date === iso && (e.kind === "TRAVAIL" || e.kind === "ACCIDENT"))
-      .reduce((s, e) => s + e.minutes, 0);
-    return { lb, iso, mins };
+    const iso = shiftDate(wFrom, i);
+    return { lb, iso, mins: workedMinutesIn(iso, iso) };
   });
-  const maxDay = Math.max(1, ...dayTotals.map((d) => d.mins));
+  const maxDay = Math.max(...dayTotals.map((d) => d.mins), 60);
+  const axisMax = Math.max(1, Math.ceil(maxDay / 60)); // heures entières
+  const axisMid = Math.round(axisMax / 2);
 
-  // Par chantier (jauges)
+  // Par chantier.
   const perCh = new Map();
   for (const e of inRange) {
     if (e.kind !== "TRAVAIL" && e.kind !== "ACCIDENT") continue;
@@ -887,8 +997,9 @@ function renderRapports() {
   }
   const chRows = [...perCh.entries()].sort((a, b) => b[1] - a[1]);
   const maxCh = Math.max(1, ...chRows.map((r) => r[1]));
+  const chShown = state.showAllCh ? chRows : chRows.slice(0, 3);
 
-  // Présence (donut)
+  // Présence.
   const nbPresent = inRange.filter((e) => (e.kind === "TRAVAIL" || e.kind === "ACCIDENT") && e.minutes > 0).length;
   const nbAbsent = inRange.filter((e) => e.kind === "ABSENCE").length;
   const nbWeather = inRange.filter((e) => e.kind === "INTEMPERIE").length;
@@ -906,10 +1017,27 @@ function renderRapports() {
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>Heures totales</h2></div>
-      <div id="rp-total-hours" style="font-size:32px;font-weight:800;letter-spacing:-0.02em">${fmtHM(t.workedMinutes)}</div>
-      <div class="muted" style="margin-bottom:8px">sur la période sélectionnée</div>
-      <div class="stat-row four" style="margin-top:12px">
+      <div class="card-head" style="margin-bottom:6px"><h2>Heures totales</h2></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div id="rp-total-hours" style="font-size:33px;font-weight:800;letter-spacing:-0.035em">${fmtHM(t.workedMinutes)}</div>
+        ${deltaHtml}
+      </div>
+      <div class="muted" style="margin:2px 0 14px">${PREV_LABEL[state.period]}</div>
+      <div class="chart">
+        <div class="yaxis"><span>${axisMax}h</span><span>${axisMid}h</span><span>0h</span></div>
+        <div class="bars">
+          <div class="grid"><i></i><i></i><i></i></div>
+          ${dayTotals
+            .map(
+              (d) => `<div class="b ${d.iso === state.date ? "on" : ""}">
+                <div class="track"><div class="fill" style="height:${Math.round((d.mins / (axisMax * 60)) * 100)}%"></div></div>
+                <div class="lb">${d.lb}</div>
+              </div>`,
+            )
+            .join("")}
+        </div>
+      </div>
+      <div class="stat-row four" style="margin-top:14px">
         <div class="stat ok"><div class="v">${nbPresent}</div><div class="l">Présences</div></div>
         <div class="stat danger"><div class="v">${t.absenceDays}</div><div class="l">Absences</div></div>
         <div class="stat info"><div class="v">${fmtHM(t.weatherMinutes)}</div><div class="l">Intempéries</div></div>
@@ -918,25 +1046,13 @@ function renderRapports() {
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>Répartition de la semaine</h2></div>
-      <div class="bars">
-        ${dayTotals
-          .map(
-            (d) => `<div class="b ${d.iso === state.date ? "on" : ""}">
-              <div class="track"><div class="fill" style="height:${Math.round((d.mins / maxDay) * 100)}%"></div></div>
-              <div class="lb">${d.lb}</div>
-            </div>`,
-          )
-          .join("")}
+      <div class="card-head"><h2>Par chantier</h2>
+        ${chRows.length > 3 ? `<button class="link" id="ch-all">${state.showAllCh ? "Réduire" : "Voir tout"}</button>` : ""}
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head"><h2>Par chantier</h2></div>
       ${
-        chRows.length === 0
+        chShown.length === 0
           ? `<div class="empty">Aucune heure sur la période.</div>`
-          : chRows
+          : chShown
               .map(
                 ([id, mins]) => `<div class="meter">
                   <div class="top"><span class="nm">${esc(chantierName(id))}</span><span class="vl">${fmtHM(mins)}</span></div>
@@ -950,9 +1066,9 @@ function renderRapports() {
     <div class="card">
       <div class="card-head"><h2>Présence</h2></div>
       ${donutCard([
-        { label: "Présents", value: nbPresent, color: "#16a34a" },
-        { label: "Absents", value: nbAbsent, color: "#e5484d" },
-        { label: "Intempéries", value: nbWeather, color: "#1ca9e0" },
+        { label: "Présents", value: nbPresent, color: "#17a34a" },
+        { label: "Absents", value: nbAbsent, color: "#ef4444" },
+        { label: "Intempéries", value: nbWeather, color: "#f5a623" },
       ])}
     </div>
 
@@ -970,6 +1086,13 @@ function renderRapports() {
     state.date = ev.target.value || today();
     render();
   };
+  const chAll = el("ch-all");
+  if (chAll) {
+    chAll.onclick = () => {
+      state.showAllCh = !state.showAllCh;
+      render();
+    };
+  }
   bindExports();
 }
 
@@ -983,19 +1106,19 @@ function donutCard(items) {
     .filter((i) => i.value > 0)
     .map((i) => {
       const len = (i.value / total) * C;
-      const seg = `<circle cx="58" cy="58" r="${R}" fill="none" stroke="${i.color}" stroke-width="15"
+      const seg = `<circle cx="59" cy="59" r="${R}" fill="none" stroke="${i.color}" stroke-width="16"
         stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}"
-        transform="rotate(-90 58 58)" stroke-linecap="butt" />`;
+        transform="rotate(-90 59 59)" />`;
       offset += len;
       return seg;
     })
     .join("");
   return `
     <div class="donut-wrap">
-      <svg class="donut" viewBox="0 0 116 116">
-        <circle cx="58" cy="58" r="${R}" fill="none" stroke="#eef0f4" stroke-width="15" />
+      <svg class="donut" viewBox="0 0 118 118">
+        <circle cx="59" cy="59" r="${R}" fill="none" stroke="#eef2f6" stroke-width="16" />
         ${arcs}
-        <text x="58" y="63" text-anchor="middle" font-size="19" font-weight="700" fill="#16202f">${total}</text>
+        <text x="59" y="64" text-anchor="middle" font-size="19" font-weight="800" fill="#101828" font-family="inherit">${total}</text>
       </svg>
       <div class="legend">
         ${items
@@ -1064,12 +1187,12 @@ function costCard(cost, entries) {
   return `
     <div class="card">
       <div class="card-head"><h2>Coût estimé</h2><span class="sub">vue admin</span></div>
-      <div id="rp-total-cost" style="font-size:28px;font-weight:800;margin-bottom:10px">${fmtEur(cost.total)}</div>
+      <div id="rp-total-cost" style="font-size:28px;font-weight:800;letter-spacing:-0.03em;margin-bottom:12px">${fmtEur(cost.total)}</div>
       <div class="stat-row four">
-        <div class="stat"><div class="v" style="font-size:16px">${fmtEur(cost.labor)}</div><div class="l">Main d'œuvre</div></div>
-        <div class="stat"><div class="v" style="font-size:16px">${fmtEur(cost.meal)}</div><div class="l">Paniers</div></div>
-        <div class="stat"><div class="v" style="font-size:16px">${fmtEur(cost.travel)}</div><div class="l">Déplacements</div></div>
-        <div class="stat"><div class="v" style="font-size:16px">${fmtEur(cost.weather)}</div><div class="l">Intempéries</div></div>
+        <div class="stat"><div class="v" style="font-size:15px">${fmtEur(cost.labor)}</div><div class="l">Main d'œuvre</div></div>
+        <div class="stat"><div class="v" style="font-size:15px">${fmtEur(cost.meal)}</div><div class="l">Paniers</div></div>
+        <div class="stat"><div class="v" style="font-size:15px">${fmtEur(cost.travel)}</div><div class="l">Déplacements</div></div>
+        <div class="stat"><div class="v" style="font-size:15px">${fmtEur(cost.weather)}</div><div class="l">Intempéries</div></div>
       </div>
       <div class="divider"></div>
       ${[...perCh.entries()]
@@ -1098,12 +1221,12 @@ function exportCard() {
           .join("")}</select>
       </div>
       <button class="btn block" id="exp-interim" style="margin-top:12px" ${!store.online ? "disabled" : ""}>
-        📄 Relevé facturation intérim (ETT)
+        ${I.doc} Relevé facturation intérim (ETT)
       </button>
       <button class="btn ghost block" id="exp-salaried" style="margin-top:8px" ${!store.online ? "disabled" : ""}>
-        📄 Relevé salariés / stagiaires / alternants
+        ${I.doc} Relevé salariés / stagiaires / alternants
       </button>
-      ${!store.online ? `<p class="hint">🔌 Connexion requise pour générer les PDF.</p>` : ""}
+      ${!store.online ? `<p class="hint">Connexion requise pour générer les PDF.</p>` : ""}
     </div>`;
 }
 
@@ -1137,8 +1260,8 @@ function renderProfil() {
         <strong style="color:${store.online ? "var(--ok)" : "var(--danger)"}">${store.online ? "En ligne" : "Hors-ligne"}</strong>
       </div>
       <div class="rowline"><span>Adresse</span><span class="muted">${esc(store.apiBase || "même origine")}</span></div>
-      <div class="rowline"><span id="pending-line">Pointages en attente</span><strong id="pending-count">…</strong></div>
-      <button class="btn ghost block" id="open-settings" style="margin-top:12px">⚙️ Modifier les réglages</button>
+      <div class="rowline"><span>Pointages en attente</span><strong id="pending-count">…</strong></div>
+      <button class="btn ghost block" id="open-settings" style="margin-top:12px">${I.gear} Modifier les réglages</button>
     </div>
 
     <div class="card">
@@ -1164,7 +1287,7 @@ function renderProfil() {
               )
               .join("") + (workers.length > 6 ? `<div class="muted" style="margin-top:8px">+ ${workers.length - 6} autre(s)</div>` : "")
       }
-      <button class="btn block" id="add-worker" style="margin-top:12px" ${offline ? "disabled" : ""}>+ Ajouter une personne</button>
+      <button class="btn block" id="add-worker" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter une personne</button>
     </div>
 
     <div class="card">
@@ -1174,12 +1297,12 @@ function renderProfil() {
           ? `<div class="empty">Aucun chantier.</div>`
           : chantiers
               .map(
-                (c) => `<div class="rowline"><div><div style="font-weight:650">${esc(c.name)}</div>
+                (c) => `<div class="rowline"><div><div style="font-weight:700">${esc(c.name)}</div>
                   <div class="muted">${esc([c.code, c.client, c.address].filter(Boolean).join(" · "))}</div></div></div>`,
               )
               .join("")
       }
-      <button class="btn block" id="add-chantier" style="margin-top:12px" ${offline ? "disabled" : ""}>+ Ajouter un chantier</button>
+      <button class="btn block" id="add-chantier" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter un chantier</button>
     </div>
 
     <div class="card">
@@ -1189,7 +1312,7 @@ function renderProfil() {
           ? `<div class="empty">Aucune agence.</div>`
           : agencies.map((a) => `<div class="rowline"><span>${esc(a.name)}</span><span class="muted">${esc(a.contact || "")}</span></div>`).join("")
       }
-      <button class="btn block" id="add-agency" style="margin-top:12px" ${offline ? "disabled" : ""}>+ Ajouter une agence</button>
+      <button class="btn block" id="add-agency" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter une agence</button>
     </div>
 
     <div class="card">
@@ -1198,11 +1321,11 @@ function renderProfil() {
       ${costs
         .slice(0, 6)
         .map(
-          (c) => `<div class="rowline"><div><div style="font-weight:650">${esc(workerName(c.workerId))}</div>
+          (c) => `<div class="rowline"><div><div style="font-weight:700">${esc(workerName(c.workerId))}</div>
             <div class="muted">${esc(chantierName(c.chantierId))} · ${c.hourlyRate ? fmtEur(c.hourlyRate) + "/h · " : ""}panier ${fmtEur(c.mealAllowance || 0)} · dépl. ${fmtEur(c.travelAllowance || 0)}</div></div></div>`,
         )
         .join("")}
-      <button class="btn block" id="add-cost" style="margin-top:12px" ${offline ? "disabled" : ""}>+ Définir un coût</button>
+      <button class="btn block" id="add-cost" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Définir un coût</button>
     </div>`;
 
   store.pendingCount().then((n) => {
@@ -1456,7 +1579,6 @@ function setTab(tab) {
   render();
 }
 
-/** Recharge référentiel + pointages depuis le store local, puis réaffiche. */
 async function reload() {
   state.ref = await store.reference();
   state.entries = await store.allEntries();
@@ -1471,6 +1593,7 @@ async function main() {
   await store.init();
   await reload();
   store.onChange(reload);
+  maybeShowSplash();
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
