@@ -18,7 +18,9 @@ import {
   costByAgency,
   costByChantier,
   costByWorker,
+  isSalaried,
   monthlyDetail,
+  monthlyStatements,
   payrollByWorkerWeek,
   replaceWorker,
   totalCost,
@@ -29,6 +31,7 @@ import {
 import type { Agency, Chantier, CostRate, TimeEntry, Worker } from "../core/types.js";
 import type { Repository } from "./repository.js";
 import { newId, nowISO } from "./ids.js";
+import { interimMonthlyPdf, salariedMonthlyPdf } from "./pdf.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(here, "..", "..", "web");
@@ -240,6 +243,47 @@ export function createApp(repo: Repository): Express {
       },
       payroll: payrollByWorkerWeek(entries, workers, costs),
     });
+  });
+
+  // --- Exports PDF (relevés mensuels) ---
+  const MONTH_RE = /^\d{4}-\d{2}$/;
+
+  api.get("/reports/interim.pdf", async (req, res) => {
+    const month = req.query.month as string | undefined;
+    if (!month || !MONTH_RE.test(month)) {
+      return res.status(400).json({ error: "paramètre month=YYYY-MM requis" });
+    }
+    const agencyId = req.query.agencyId as string | undefined;
+    const entries = repo.queryEntries({});
+    const workers = repo.listWorkers();
+    const costs = repo.listCosts();
+    const statements = monthlyStatements(
+      entries,
+      workers,
+      costs,
+      month,
+      (w) => w.type === "INTERIMAIRE" && (!agencyId || w.agencyId === agencyId),
+    );
+    const pdf = await interimMonthlyPdf(statements, repo.listChantiers(), repo.listAgencies(), month);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="releve-interim-${month}.pdf"`);
+    res.send(pdf);
+  });
+
+  api.get("/reports/salaried.pdf", async (req, res) => {
+    const month = req.query.month as string | undefined;
+    if (!month || !MONTH_RE.test(month)) {
+      return res.status(400).json({ error: "paramètre month=YYYY-MM requis" });
+    }
+    const entries = repo.queryEntries({});
+    const workers = repo.listWorkers();
+    const costs = repo.listCosts();
+    // Salariés + stagiaires + alternants (traitement interne).
+    const statements = monthlyStatements(entries, workers, costs, month, (w) => isSalaried(w.type));
+    const pdf = await salariedMonthlyPdf(statements, repo.listChantiers(), month);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="releve-salaries-${month}.pdf"`);
+    res.send(pdf);
   });
 
   app.use("/api", api);

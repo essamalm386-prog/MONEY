@@ -28,6 +28,8 @@ export function seed(repo: Repository): void {
     { id: "wk_koffi", firstName: "Yao", lastName: "Koffi", type: "INTERIMAIRE" as const, category: "OUVRIER", trade: "Manœuvre", agencyId: "ag_demo", hourlyRate: 18, active: true },
     { id: "wk_moreau", firstName: "Sophie", lastName: "Moreau", type: "EMPLOYE" as const, category: "OUVRIER", trade: "Grutier", hourlyRate: 23, active: true },
     { id: "wk_petit", firstName: "Marc", lastName: "Petit", type: "INTERIMAIRE" as const, category: "OUVRIER", trade: "Manœuvre", agencyId: "ag_demo", hourlyRate: 18, active: true },
+    { id: "wk_leroy", firstName: "Emma", lastName: "Leroy", type: "STAGIAIRE" as const, category: "APPRENTI", trade: "Conductrice de travaux (stage)", hourlyRate: 0, active: true },
+    { id: "wk_nguyen", firstName: "Hugo", lastName: "Nguyen", type: "ALTERNANT" as const, category: "APPRENTI", trade: "Maçonnerie (alternance)", hourlyRate: 12, active: true },
   ];
   for (const w of workers) repo.upsertWorker(w);
 
@@ -83,6 +85,9 @@ export function seed(repo: Repository): void {
   for (const date of week) {
     add({ workerId: "wk_dupont", chantierId: "ch_lyon", date, kind: "TRAVAIL", startTime: "07:30", endTime: "16:30", breakMinutes: 60 });
     add({ workerId: "wk_silva", chantierId: "ch_lyon", date, kind: "TRAVAIL", startTime: "07:30", endTime: "17:30", breakMinutes: 60 });
+    // Stagiaire et alternant présents dans l'équipe (heures par chantier suivies).
+    add({ workerId: "wk_leroy", chantierId: "ch_lyon", date, kind: "TRAVAIL", startTime: "08:00", endTime: "16:00", breakMinutes: 60 });
+    add({ workerId: "wk_nguyen", chantierId: "ch_lyon", date, kind: "TRAVAIL", startTime: "07:30", endTime: "16:30", breakMinutes: 60 });
   }
   // Koffi : semaine avec une intempérie et une absence
   add({ workerId: "wk_koffi", chantierId: "ch_villeurb", date: "2026-07-27", kind: "TRAVAIL", minutes: 480 });

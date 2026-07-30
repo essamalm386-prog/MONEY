@@ -37,7 +37,7 @@ const post = (p: string, body: unknown) =>
 describe("API référentiels", () => {
   it("liste chantiers et personnes issus du seed", async () => {
     expect((await get("/api/chantiers")).length).toBe(2);
-    expect((await get("/api/workers")).length).toBe(6);
+    expect((await get("/api/workers")).length).toBe(8);
     expect((await get("/api/agencies")).length).toBe(1);
   });
   it("health", async () => {
@@ -160,6 +160,30 @@ describe("API coûts", () => {
     expect(res.status).toBe(201);
     const costs = await get("/api/costs");
     expect(costs.some((c: any) => c.workerId === "wk_silva" && c.chantierId === "ch_villeurb")).toBe(true);
+  });
+});
+
+describe("API exports PDF", () => {
+  async function fetchPdf(path: string) {
+    const res = await fetch(base + path);
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { res, buf };
+  }
+  it("relevé intérim mensuel = PDF", async () => {
+    const { res, buf } = await fetchPdf("/api/reports/interim.pdf?month=2026-07");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(buf.length).toBeGreaterThan(800);
+  });
+  it("relevé salariés mensuel = PDF", async () => {
+    const { res, buf } = await fetchPdf("/api/reports/salaried.pdf?month=2026-07");
+    expect(res.status).toBe(200);
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+  it("month manquant → 400", async () => {
+    const res = await fetch(base + "/api/reports/interim.pdf");
+    expect(res.status).toBe(400);
   });
 });
 

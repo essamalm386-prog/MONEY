@@ -500,6 +500,20 @@ async function renderDashboard() {
     </div>
 
     <div class="card">
+      <h2>Exports PDF — relevés mensuels</h2>
+      <p class="muted">Relevé détaillé par intérimaire (à comparer aux factures ETT) et relevé heures/chantier des salariés, stagiaires et alternants.</p>
+      <label>Mois</label>
+      <input type="month" id="exp-month" value="${monthKey(state.date)}" />
+      <label>Agence (relevé intérim, optionnel)</label>
+      <select id="exp-agency"><option value="">Toutes les agences</option>${state.ref.agencies.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>
+      <div class="row" style="margin-top:.7rem">
+        <button class="btn" id="exp-interim" ${!store.online ? "disabled" : ""}>PDF intérim (ETT)</button>
+        <button class="btn ghost" id="exp-salaried" ${!store.online ? "disabled" : ""}>PDF salariés</button>
+      </div>
+      ${!store.online ? `<p class="muted">🔌 Connexion requise pour générer les PDF.</p>` : ""}
+    </div>
+
+    <div class="card">
       <h2>Coût estimé (admin)</h2>
       <div class="kpis">
         <div class="kpi"><div class="v" style="font-size:1.25rem">${fmtEur(cost.total)}</div><div class="l">Coût total</div></div>
@@ -526,6 +540,18 @@ async function renderDashboard() {
     state.date = ev.target.value;
     renderDashboard();
   };
+  const expMonth = () => el("exp-month").value || monthKey(state.date);
+  el("exp-interim").onclick = () => {
+    const ag = el("exp-agency").value;
+    openExport(`/api/reports/interim.pdf?month=${expMonth()}${ag ? "&agencyId=" + encodeURIComponent(ag) : ""}`);
+  };
+  el("exp-salaried").onclick = () => openExport(`/api/reports/salaried.pdf?month=${expMonth()}`);
+}
+
+/** Ouvre un export (PDF) en tenant compte d'une éventuelle base API distante. */
+function openExport(path) {
+  const url = (store.apiBase || "") + path;
+  window.open(url, "_blank");
 }
 
 function tableCard(title, group, nameOf, showOvertime) {

@@ -16,7 +16,13 @@ L'application **fonctionne en local et en ligne** : saisie possible **hors-ligne
   - une **intempérie** (heures perdues, avec logique de chômage-intempéries BTP),
   - un **accident du travail** (gravité, circonstances, rappel du délai de déclaration 48 h).
 - **Personnel** : chaque personne a sa **catégorie** (ouvrier, ETAM, cadre, apprenti)
-  et son **métier** ; employé interne ou intérimaire rattaché à une agence.
+  et son **métier** ; **salarié** interne, **intérimaire** (rattaché à une agence),
+  **stagiaire** ou **alternant** — tous suivis dans les équipes.
+- **Exports PDF mensuels** :
+  - **relevé intérim par agence (ETT)** : heures par chantier, jours travaillés,
+    ventilation des heures sup. par semaine et coût estimé — pour **comparer et
+    vérifier les factures des agences** ;
+  - **relevé salariés / stagiaires / alternants** : détail des **heures par chantier**.
 - **Coûts par chantier** (vue admin) : à la création d'une personne, on renseigne
   ce qu'elle **coûte** — salaire horaire chargé, **panier repas**, **indemnité de
   déplacement** — et cela **en fonction de chaque chantier** (zones différentes).

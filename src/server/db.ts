@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS workers (
   id         TEXT PRIMARY KEY,
   firstName  TEXT NOT NULL,
   lastName   TEXT NOT NULL,
-  type       TEXT NOT NULL CHECK (type IN ('EMPLOYE','INTERIMAIRE')),
+  type       TEXT NOT NULL CHECK (type IN ('EMPLOYE','INTERIMAIRE','STAGIAIRE','ALTERNANT')),
   category   TEXT,
   trade      TEXT,
   agencyId   TEXT REFERENCES agencies(id),
@@ -108,6 +108,31 @@ function migrate(db: DB): void {
   const cols = db.prepare("PRAGMA table_info(workers)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "category")) {
     db.exec("ALTER TABLE workers ADD COLUMN category TEXT");
+  }
+
+  // Ancienne contrainte CHECK à 2 valeurs → reconstruction de la table pour
+  // accepter STAGIAIRE / ALTERNANT (SQLite ne permet pas d'altérer un CHECK).
+  const ddl = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='workers'")
+    .get() as { sql?: string } | undefined;
+  if (ddl?.sql && !ddl.sql.includes("STAGIAIRE")) {
+    const rebuild = db.transaction(() => {
+      db.pragma("foreign_keys = OFF");
+      db.exec(`
+        CREATE TABLE workers_new (
+          id TEXT PRIMARY KEY, firstName TEXT NOT NULL, lastName TEXT NOT NULL,
+          type TEXT NOT NULL CHECK (type IN ('EMPLOYE','INTERIMAIRE','STAGIAIRE','ALTERNANT')),
+          category TEXT, trade TEXT, agencyId TEXT REFERENCES agencies(id),
+          hourlyRate REAL, active INTEGER NOT NULL DEFAULT 1
+        );
+        INSERT INTO workers_new (id,firstName,lastName,type,category,trade,agencyId,hourlyRate,active)
+          SELECT id,firstName,lastName,type,category,trade,agencyId,hourlyRate,active FROM workers;
+        DROP TABLE workers;
+        ALTER TABLE workers_new RENAME TO workers;
+      `);
+      db.pragma("foreign_keys = ON");
+    });
+    rebuild();
   }
 }
 

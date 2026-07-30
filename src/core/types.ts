@@ -6,8 +6,19 @@
  * testable et réutilisable côté serveur comme côté client (PWA).
  */
 
-/** Type de personne pointée sur un chantier. */
-export type WorkerType = "EMPLOYE" | "INTERIMAIRE";
+/**
+ * Type de personne pointée sur un chantier.
+ * - EMPLOYE : salarié interne (traitement paie interne).
+ * - INTERIMAIRE : mis à disposition par une ETT (agence) → facturation ETT.
+ * - STAGIAIRE / ALTERNANT : présents dans les équipes, suivi des heures par
+ *   chantier ; rattachés au traitement interne (hors facturation ETT).
+ */
+export type WorkerType = "EMPLOYE" | "INTERIMAIRE" | "STAGIAIRE" | "ALTERNANT";
+
+/** Une personne relève-t-elle du traitement interne (vs. intérim/ETT) ? */
+export function isSalaried(type: WorkerType): boolean {
+  return type !== "INTERIMAIRE";
+}
 
 /** Nature d'une journée pointée pour une personne. */
 export type EntryKind =

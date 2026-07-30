@@ -55,6 +55,22 @@ export class Store {
     this.online = navigator.onLine;
     this.listeners = new Set();
     this._syncing = false;
+    // Base de l'API. Vide = même origine (PWA/web). Sur l'app Android empaquetée,
+    // on configure l'URL du serveur (ex. https://pointage.tdmi.fr) via l'écran
+    // de réglages, persistée dans localStorage.
+    this.apiBase = (typeof localStorage !== "undefined" && localStorage.getItem("apiBase")) || "";
+  }
+
+  setApiBase(url) {
+    this.apiBase = (url || "").replace(/\/$/, "");
+    try {
+      localStorage.setItem("apiBase", this.apiBase);
+    } catch {
+      /* stockage indisponible */
+    }
+  }
+  api(path) {
+    return this.apiBase + path;
   }
 
   async init() {
@@ -82,11 +98,11 @@ export class Store {
   async refreshReference() {
     if (!this.online) return this._cachedReference();
     const [chantiers, workers, agencies, assignments, costs] = await Promise.all([
-      fetch("/api/chantiers").then((r) => r.json()),
-      fetch("/api/workers").then((r) => r.json()),
-      fetch("/api/agencies").then((r) => r.json()),
-      fetch("/api/assignments").then((r) => r.json()),
-      fetch("/api/costs").then((r) => r.json()),
+      fetch(this.api("/api/chantiers")).then((r) => r.json()),
+      fetch(this.api("/api/workers")).then((r) => r.json()),
+      fetch(this.api("/api/agencies")).then((r) => r.json()),
+      fetch(this.api("/api/assignments")).then((r) => r.json()),
+      fetch(this.api("/api/costs")).then((r) => r.json()),
     ]);
     await tx(this.db, "ref", "readwrite", (s) => {
       s.put({ key: "chantiers", value: chantiers });
@@ -146,7 +162,7 @@ export class Store {
   }
   async _postRef(url, key, payload) {
     if (!this.online) throw new Error("Connexion requise pour modifier le référentiel");
-    const res = await fetch(url, {
+    const res = await fetch(this.api(url), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -229,7 +245,7 @@ export class Store {
       const all = await this.allEntries();
       const dirty = all.filter((e) => e.sync === "LOCAL");
       if (dirty.length) {
-        const res = await fetch("/api/sync/push", {
+        const res = await fetch(this.api("/api/sync/push"), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ entries: dirty }),
@@ -241,8 +257,8 @@ export class Store {
       }
 
       const since = (await this._meta("lastPull")) || "1970-01-01T00:00:00.000Z";
-      const pull = await fetch(`/api/sync/pull?since=${encodeURIComponent(since)}`).then((r) =>
-        r.json(),
+      const pull = await fetch(this.api(`/api/sync/pull?since=${encodeURIComponent(since)}`)).then(
+        (r) => r.json(),
       );
       if (pull.entries && pull.entries.length) {
         await tx(this.db, "entries", "readwrite", (s) => {
