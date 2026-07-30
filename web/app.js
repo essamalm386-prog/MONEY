@@ -1,0 +1,484 @@
+/**
+ * Application PWA — pilote les trois vues (Pointage, Tableau de bord,
+ * Référentiel) au-dessus du Store local-first.
+ */
+import { Store } from "./store.js";
+import {
+  ABSENCE_LABEL,
+  KIND_LABEL,
+  SEVERITY_LABEL,
+  groupBy,
+  isoWeekKey,
+  minutesToHours,
+  monthKey,
+  totals,
+  weeklyOvertime,
+  workedMinutes,
+} from "./domain.js";
+
+const store = new Store();
+const el = (id) => document.getElementById(id);
+const view = el("view");
+
+const state = {
+  tab: "pointage",
+  date: new Date().toISOString().slice(0, 10),
+  chantierId: "",
+  period: "jour", // jour | semaine | mois
+  ref: { chantiers: [], workers: [], agencies: [] },
+};
+
+// --------- Utilitaires UI ---------
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function toast(msg, isErr = false) {
+  const t = el("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (isErr ? " err" : "");
+  setTimeout(() => (t.className = "toast"), 2600);
+}
+function workerName(id) {
+  const w = state.ref.workers.find((x) => x.id === id);
+  return w ? `${w.firstName} ${w.lastName}` : id;
+}
+function chantierName(id) {
+  const c = state.ref.chantiers.find((x) => x.id === id);
+  return c ? c.name : id;
+}
+function agencyName(id) {
+  if (id === "INTERNE") return "Employés internes";
+  const a = state.ref.agencies.find((x) => x.id === id);
+  return a ? a.name : id;
+}
+function fmtH(minutes) {
+  return `${minutesToHours(minutes).toLocaleString("fr-FR")} h`;
+}
+
+// --------- Barre de statut réseau ---------
+async function refreshStatus() {
+  const dot = el("dot");
+  dot.className = "dot " + (store.online ? "online" : "offline");
+  el("netlabel").textContent = store.online ? "En ligne" : "Hors-ligne";
+  const p = await store.pendingCount();
+  const badge = el("pending");
+  if (p > 0) {
+    badge.hidden = false;
+    badge.textContent = `${p} à synchro.`;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+// =====================================================================
+//  VUE POINTAGE
+// =====================================================================
+async function renderPointage() {
+  const { chantiers } = state.ref;
+  if (!state.chantierId && chantiers[0]) state.chantierId = chantiers[0].id;
+
+  const entries = await store.entriesForDate(state.date, state.chantierId);
+  const byWorker = new Map(entries.map((e) => [e.workerId, e]));
+  const workers = state.ref.workers.filter((w) => w.active);
+
+  view.innerHTML = `
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Chantier</label>
+          <select id="f-chantier">
+            ${chantiers.map((c) => `<option value="${c.id}" ${c.id === state.chantierId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label>Date</label>
+          <input type="date" id="f-date" value="${state.date}" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Équipe — ${esc(chantierName(state.chantierId))}</h2>
+      ${workers.length === 0 ? `<div class="empty">Aucune personne. Ajoutez-en dans l'onglet Référentiel.</div>` : ""}
+      <div id="worker-list">
+        ${workers
+          .map((w) => {
+            const e = byWorker.get(w.id);
+            const info = e ? entrySummary(e) : `<span class="muted">Non pointé</span>`;
+            return `
+            <div class="worker-row">
+              <div class="who">
+                <div class="name">${esc(w.firstName)} ${esc(w.lastName)}</div>
+                <div class="meta"><span class="pill ${w.type}">${w.type === "EMPLOYE" ? "Employé" : "Intérim"}</span> ${esc(w.trade || "")}</div>
+                <div style="margin-top:.25rem">${info}</div>
+              </div>
+              <button class="btn sm" data-point="${w.id}">${e ? "Modifier" : "Pointer"}</button>
+            </div>`;
+          })
+          .join("")}
+      </div>
+    </div>`;
+
+  el("f-chantier").onchange = (ev) => {
+    state.chantierId = ev.target.value;
+    renderPointage();
+  };
+  el("f-date").onchange = (ev) => {
+    state.date = ev.target.value;
+    renderPointage();
+  };
+  view.querySelectorAll("[data-point]").forEach((b) => {
+    b.onclick = () => openEntrySheet(b.getAttribute("data-point"), byWorker.get(b.getAttribute("data-point")));
+  });
+}
+
+function entrySummary(e) {
+  const tag = `<span class="tag ${e.kind}">${KIND_LABEL[e.kind]}</span>`;
+  if (e.kind === "TRAVAIL") return `${tag} <strong>${fmtH(e.minutes)}</strong>${e.startTime ? ` (${e.startTime}–${e.endTime})` : ""}`;
+  if (e.kind === "INTEMPERIE") return `${tag} ${fmtH(e.minutes)} perdues${e.note ? ` · ${esc(e.note)}` : ""}`;
+  if (e.kind === "ABSENCE") return `${tag} ${ABSENCE_LABEL[e.absenceReason] || ""}`;
+  if (e.kind === "ACCIDENT") return `${tag} ${SEVERITY_LABEL[e.accidentSeverity] || ""}${e.minutes ? ` · ${fmtH(e.minutes)} avant arrêt` : ""}`;
+  return tag;
+}
+
+// --------- Feuille de saisie d'un pointage ---------
+function openEntrySheet(workerId, existing) {
+  const kind = existing?.kind || "TRAVAIL";
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="sheet">
+      <h3>${esc(workerName(workerId))} — ${state.date}</h3>
+      <label>Nature</label>
+      <div class="seg" id="seg-kind">
+        ${["TRAVAIL", "INTEMPERIE", "ABSENCE", "ACCIDENT"]
+          .map((k) => `<button data-k="${k}" class="${k === kind ? "on" : ""}">${KIND_LABEL[k]}</button>`)
+          .join("")}
+      </div>
+      <div id="kind-fields"></div>
+      <div class="row" style="margin-top:1rem">
+        ${existing ? `<button class="btn danger" id="del">Supprimer</button>` : ""}
+        <button class="btn ghost" id="cancel">Annuler</button>
+        <button class="btn" id="save">Enregistrer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  let current = kind;
+  const fields = overlay.querySelector("#kind-fields");
+  const renderFields = () => {
+    fields.innerHTML = fieldsFor(current, existing);
+  };
+  renderFields();
+
+  overlay.querySelectorAll("#seg-kind button").forEach((b) => {
+    b.onclick = () => {
+      current = b.getAttribute("data-k");
+      overlay.querySelectorAll("#seg-kind button").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      renderFields();
+    };
+  });
+
+  const close = () => overlay.remove();
+  overlay.querySelector("#cancel").onclick = close;
+  overlay.onclick = (ev) => {
+    if (ev.target === overlay) close();
+  };
+  if (existing) {
+    overlay.querySelector("#del").onclick = async () => {
+      await store.deleteEntry(existing.id);
+      close();
+      toast("Pointage supprimé");
+      renderPointage();
+      refreshStatus();
+    };
+  }
+
+  overlay.querySelector("#save").onclick = async () => {
+    try {
+      const payload = collectFields(current, overlay, workerId, existing);
+      await store.saveEntry(payload);
+      close();
+      toast("Pointage enregistré");
+      renderPointage();
+      refreshStatus();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  };
+}
+
+function fieldsFor(kind, e) {
+  if (kind === "TRAVAIL") {
+    return `
+      <div class="row">
+        <div><label>Début</label><input type="time" id="start" value="${e?.startTime || "07:30"}" /></div>
+        <div><label>Fin</label><input type="time" id="end" value="${e?.endTime || "16:30"}" /></div>
+      </div>
+      <label>Pause (minutes)</label>
+      <input type="number" id="break" min="0" step="5" value="${e?.breakMinutes ?? 60}" />
+      <p class="muted" id="calc"></p>`;
+  }
+  if (kind === "INTEMPERIE") {
+    return `
+      <label>Heures perdues</label>
+      <input type="number" id="hours" min="0" step="0.25" value="${e?.minutes ? minutesToHours(e.minutes) : 4}" />
+      <label>Motif / commentaire</label>
+      <textarea id="note" rows="2" placeholder="Pluie, gel, vent…">${esc(e?.note || "")}</textarea>`;
+  }
+  if (kind === "ABSENCE") {
+    return `
+      <label>Motif</label>
+      <select id="reason">
+        ${Object.entries(ABSENCE_LABEL).map(([k, v]) => `<option value="${k}" ${e?.absenceReason === k ? "selected" : ""}>${v}</option>`).join("")}
+      </select>
+      <label>Commentaire</label>
+      <textarea id="note" rows="2">${esc(e?.note || "")}</textarea>`;
+  }
+  // ACCIDENT
+  return `
+    <label>Gravité</label>
+    <select id="severity">
+      ${Object.entries(SEVERITY_LABEL).map(([k, v]) => `<option value="${k}" ${e?.accidentSeverity === k ? "selected" : ""}>${v}</option>`).join("")}
+    </select>
+    <label>Heures travaillées avant l'arrêt</label>
+    <input type="number" id="hours" min="0" step="0.25" value="${e?.minutes ? minutesToHours(e.minutes) : 0}" />
+    <label>Circonstances</label>
+    <textarea id="note" rows="3" placeholder="Nature, partie du corps, tiers…">${esc(e?.note || "")}</textarea>
+    <p class="muted">⚠️ Déclaration d'accident du travail à transmettre sous 48 h.</p>`;
+}
+
+function collectFields(kind, overlay, workerId, existing) {
+  const base = {
+    id: existing?.id,
+    workerId,
+    chantierId: state.chantierId,
+    date: state.date,
+    kind,
+    recordedBy: "chef", // identifiant du chef connecté (à brancher sur l'auth)
+  };
+  const val = (sel) => overlay.querySelector(sel)?.value;
+  if (kind === "TRAVAIL") {
+    const minutes = workedMinutes(val("#start"), val("#end"), Number(val("#break") || 0));
+    if (minutes <= 0) throw new Error("Durée nulle");
+    return { ...base, minutes, startTime: val("#start"), endTime: val("#end"), breakMinutes: Number(val("#break") || 0) };
+  }
+  if (kind === "INTEMPERIE") {
+    const minutes = Math.round(Number(val("#hours")) * 60);
+    if (minutes <= 0) throw new Error("Préciser les heures perdues");
+    return { ...base, minutes, note: val("#note") };
+  }
+  if (kind === "ABSENCE") {
+    return { ...base, minutes: 0, absenceReason: val("#reason"), note: val("#note") };
+  }
+  return {
+    ...base,
+    minutes: Math.round(Number(val("#hours") || 0) * 60),
+    accidentSeverity: val("#severity"),
+    note: val("#note"),
+  };
+}
+
+// =====================================================================
+//  VUE TABLEAU DE BORD
+// =====================================================================
+async function renderDashboard() {
+  const all = (await store.allEntries()).filter((e) => !e.deleted);
+  const { from, to, label } = periodRange();
+  const inRange = all.filter((e) => e.date >= from && e.date <= to);
+  const t = totals(inRange);
+
+  const perWorker = groupBy(inRange, (e) => e.workerId);
+  const perChantier = groupBy(inRange, (e) => e.chantierId);
+  const perAgency = groupBy(inRange, (e) => {
+    const w = state.ref.workers.find((x) => x.id === e.workerId);
+    return w?.agencyId || "INTERNE";
+  });
+
+  view.innerHTML = `
+    <div class="card">
+      <div class="seg" id="seg-period">
+        ${[["jour", "Jour"], ["semaine", "Semaine"], ["mois", "Mois"]]
+          .map(([k, v]) => `<button data-p="${k}" class="${state.period === k ? "on" : ""}">${v}</button>`)
+          .join("")}
+      </div>
+      <label>Date de référence</label>
+      <input type="date" id="dash-date" value="${state.date}" />
+      <p class="muted">Période : ${label}</p>
+    </div>
+
+    <div class="card">
+      <h2>Synthèse</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v">${minutesToHours(t.workedMinutes).toLocaleString("fr-FR")}</div><div class="l">Heures travaillées</div></div>
+        <div class="kpi weather"><div class="v">${minutesToHours(t.weatherMinutes).toLocaleString("fr-FR")}</div><div class="l">Heures intempéries</div></div>
+        <div class="kpi"><div class="v">${t.absenceDays}</div><div class="l">Jours d'absence</div></div>
+        <div class="kpi accident"><div class="v">${t.accidentCount}</div><div class="l">Accidents</div></div>
+      </div>
+    </div>
+
+    ${tableCard("Par personne", perWorker, workerName, state.period === "semaine")}
+    ${tableCard("Par chantier", perChantier, chantierName, false)}
+    ${tableCard("Par agence / interne", perAgency, agencyName, false)}
+  `;
+
+  view.querySelectorAll("#seg-period button").forEach((b) => {
+    b.onclick = () => {
+      state.period = b.getAttribute("data-p");
+      renderDashboard();
+    };
+  });
+  el("dash-date").onchange = (ev) => {
+    state.date = ev.target.value;
+    renderDashboard();
+  };
+}
+
+function tableCard(title, group, nameOf, showOvertime) {
+  const rows = [...group.entries()]
+    .map(([key, list]) => ({ key, t: totals(list) }))
+    .sort((a, b) => b.t.workedMinutes - a.t.workedMinutes);
+  if (rows.length === 0) return `<div class="card"><h2>${title}</h2><div class="empty">Aucune donnée</div></div>`;
+  return `
+    <div class="card">
+      <h2>${title}</h2>
+      <table>
+        <thead><tr>
+          <th>${title.includes("personne") ? "Personne" : title.includes("chantier") ? "Chantier" : "Agence"}</th>
+          <th class="num">Trav.</th>
+          <th class="num">Intemp.</th>
+          <th class="num">Abs.</th>
+          <th class="num">Acc.</th>
+          ${showOvertime ? `<th class="num">H. payées*</th>` : ""}
+        </tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (r) => `<tr>
+                <td>${esc(nameOf(r.key))}</td>
+                <td class="num">${minutesToHours(r.t.workedMinutes).toLocaleString("fr-FR")}</td>
+                <td class="num">${minutesToHours(r.t.weatherMinutes).toLocaleString("fr-FR")}</td>
+                <td class="num">${r.t.absenceDays}</td>
+                <td class="num">${r.t.accidentCount}</td>
+                ${showOvertime ? `<td class="num">${weeklyOvertime(r.t.workedMinutes).paidEquivalentHours.toLocaleString("fr-FR")}</td>` : ""}
+              </tr>`,
+            )
+            .join("")}
+        </tbody>
+      </table>
+      ${showOvertime ? `<p class="muted">* équivalent payé avec majorations heures sup. (35 h légales, +25 % puis +50 %).</p>` : ""}
+    </div>`;
+}
+
+function periodRange() {
+  const d = state.date;
+  if (state.period === "jour") return { from: d, to: d, label: d };
+  if (state.period === "semaine") {
+    const wd = new Date(d + "T00:00:00Z").getUTCDay();
+    const iso = wd === 0 ? 7 : wd;
+    const monday = new Date(d + "T00:00:00Z");
+    monday.setUTCDate(monday.getUTCDate() - (iso - 1));
+    const sunday = new Date(monday);
+    sunday.setUTCDate(sunday.getUTCDate() + 6);
+    const from = monday.toISOString().slice(0, 10);
+    const to = sunday.toISOString().slice(0, 10);
+    return { from, to, label: `${isoWeekKey(d)} (${from} → ${to})` };
+  }
+  const from = d.slice(0, 7) + "-01";
+  const [y, m] = d.split("-").map(Number);
+  const to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  return { from, to, label: monthKey(d) };
+}
+
+// =====================================================================
+//  VUE RÉFÉRENTIEL
+// =====================================================================
+function renderReferentiel() {
+  const { chantiers, workers, agencies } = state.ref;
+  const offline = !store.online;
+  view.innerHTML = `
+    ${offline ? `<div class="card"><span class="muted">🔌 Hors-ligne : la création de chantiers/personnes nécessite une connexion. La saisie des pointages reste possible.</span></div>` : ""}
+    <div class="card">
+      <h2>Chantiers (${chantiers.length})</h2>
+      <div id="list-ch">${chantiers.map((c) => `<div class="worker-row"><div class="who"><div class="name">${esc(c.name)}</div><div class="meta">${esc(c.code)} · ${esc(c.client || "")}</div></div></div>`).join("") || `<div class="empty">Aucun chantier</div>`}</div>
+      <div class="row" style="margin-top:.75rem"><input id="ch-code" placeholder="Code (ex. LY-2026-01)" /><input id="ch-name" placeholder="Nom du chantier" /></div>
+      <input id="ch-client" placeholder="Client" style="margin-top:.5rem" />
+      <button class="btn" id="add-ch" style="margin-top:.5rem" ${offline ? "disabled" : ""}>Ajouter le chantier</button>
+    </div>
+
+    <div class="card">
+      <h2>Personnes (${workers.length})</h2>
+      <div>${workers.map((w) => `<div class="worker-row"><div class="who"><div class="name">${esc(w.firstName)} ${esc(w.lastName)}</div><div class="meta"><span class="pill ${w.type}">${w.type === "EMPLOYE" ? "Employé" : "Intérim"}</span> ${esc(w.trade || "")}${w.agencyId ? " · " + esc(agencyName(w.agencyId)) : ""}</div></div></div>`).join("") || `<div class="empty">Aucune personne</div>`}</div>
+      <div class="row" style="margin-top:.75rem"><input id="w-first" placeholder="Prénom" /><input id="w-last" placeholder="Nom" /></div>
+      <div class="row" style="margin-top:.5rem">
+        <select id="w-type"><option value="EMPLOYE">Employé</option><option value="INTERIMAIRE">Intérimaire</option></select>
+        <input id="w-trade" placeholder="Métier" />
+      </div>
+      <select id="w-agency" style="margin-top:.5rem"><option value="">— Agence (si intérim) —</option>${agencies.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>
+      <button class="btn" id="add-w" style="margin-top:.5rem" ${offline ? "disabled" : ""}>Ajouter la personne</button>
+    </div>
+
+    <div class="card">
+      <h2>Agences d'intérim (${agencies.length})</h2>
+      <div>${agencies.map((a) => `<div class="worker-row"><div class="who"><div class="name">${esc(a.name)}</div><div class="meta">${esc(a.contact || "")}</div></div></div>`).join("") || `<div class="empty">Aucune agence</div>`}</div>
+      <input id="a-name" placeholder="Nom de l'agence" style="margin-top:.75rem" />
+      <button class="btn" id="add-a" style="margin-top:.5rem" ${offline ? "disabled" : ""}>Ajouter l'agence</button>
+    </div>`;
+
+  const v = (id) => el(id)?.value.trim();
+  el("add-ch") && (el("add-ch").onclick = () => guarded(() => store.addChantier({ code: v("ch-code"), name: v("ch-name"), client: v("ch-client") }), "Chantier ajouté"));
+  el("add-w") && (el("add-w").onclick = () => guarded(() => store.addWorker({ firstName: v("w-first"), lastName: v("w-last"), type: v("w-type"), trade: v("w-trade"), agencyId: v("w-agency") || undefined }), "Personne ajoutée"));
+  el("add-a") && (el("add-a").onclick = () => guarded(() => store.addAgency({ name: v("a-name") }), "Agence ajoutée"));
+}
+
+async function guarded(fn, okMsg) {
+  try {
+    await fn();
+    await loadReference();
+    toast(okMsg);
+    renderReferentiel();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+// =====================================================================
+//  Bootstrap
+// =====================================================================
+async function loadReference() {
+  state.ref = await store.reference();
+}
+
+function render() {
+  if (state.tab === "pointage") renderPointage();
+  else if (state.tab === "dashboard") renderDashboard();
+  else renderReferentiel();
+  refreshStatus();
+}
+
+function setTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.toggle("active", b.getAttribute("data-tab") === tab));
+  render();
+}
+
+async function main() {
+  document.querySelectorAll("nav.tabs button").forEach((b) => {
+    b.onclick = () => setTab(b.getAttribute("data-tab"));
+  });
+
+  await store.init();
+  await loadReference();
+  store.onChange(async () => {
+    await loadReference();
+    render();
+  });
+  render();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }
+}
+
+main();

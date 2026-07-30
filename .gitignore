@@ -32,3 +32,18 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+
+# Données locales (base SQLite runtime)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Divers
+.DS_Store
+e2e_out.log
