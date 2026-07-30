@@ -504,10 +504,14 @@ async function renderDashboard() {
       <p class="muted">Relevé détaillé par intérimaire (à comparer aux factures ETT) et relevé heures/chantier des salariés, stagiaires et alternants.</p>
       <label>Mois</label>
       <input type="month" id="exp-month" value="${monthKey(state.date)}" />
-      <label>Agence (relevé intérim, optionnel)</label>
-      <select id="exp-agency"><option value="">Toutes les agences</option>${state.ref.agencies.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>
+      <p class="muted" style="margin:.6rem 0 .2rem">Filtres du relevé intérim (impression par agence, chantier ou catégorie) :</p>
+      <div class="row">
+        <select id="exp-agency"><option value="">Toutes agences</option>${state.ref.agencies.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>
+        <select id="exp-chantier"><option value="">Tous chantiers</option>${state.ref.chantiers.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+        <select id="exp-category"><option value="">Toutes catégories</option>${Object.entries(CATEGORY_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+      </div>
       <div class="row" style="margin-top:.7rem">
-        <button class="btn" id="exp-interim" ${!store.online ? "disabled" : ""}>PDF intérim (ETT)</button>
+        <button class="btn" id="exp-interim" ${!store.online ? "disabled" : ""}>PDF facturation intérim</button>
         <button class="btn ghost" id="exp-salaried" ${!store.online ? "disabled" : ""}>PDF salariés</button>
       </div>
       ${!store.online ? `<p class="muted">🔌 Connexion requise pour générer les PDF.</p>` : ""}
@@ -542,8 +546,11 @@ async function renderDashboard() {
   };
   const expMonth = () => el("exp-month").value || monthKey(state.date);
   el("exp-interim").onclick = () => {
-    const ag = el("exp-agency").value;
-    openExport(`/api/reports/interim.pdf?month=${expMonth()}${ag ? "&agencyId=" + encodeURIComponent(ag) : ""}`);
+    const q = new URLSearchParams({ month: expMonth() });
+    if (el("exp-agency").value) q.set("agencyId", el("exp-agency").value);
+    if (el("exp-chantier").value) q.set("chantierId", el("exp-chantier").value);
+    if (el("exp-category").value) q.set("category", el("exp-category").value);
+    openExport(`/api/reports/interim.pdf?${q.toString()}`);
   };
   el("exp-salaried").onclick = () => openExport(`/api/reports/salaried.pdf?month=${expMonth()}`);
 }
@@ -685,9 +692,16 @@ function renderReferentiel() {
         <select id="co-chantier">${chantiers.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
       </div>
       <div class="row" style="margin-top:.5rem">
-        <input id="co-rate" type="number" step="0.5" min="0" placeholder="€/h chargé" />
+        <input id="co-rate" type="number" step="0.5" min="0" placeholder="€/h normale" />
         <input id="co-meal" type="number" step="0.5" min="0" placeholder="Panier €/j" />
         <input id="co-travel" type="number" step="0.5" min="0" placeholder="Déplacement €/j" />
+      </div>
+      <p class="muted" style="margin:.5rem 0 .2rem">Prix unitaires spécifiques (optionnels — sinon calculés : +25 %, +50 %, férié ×2, intempérie ×0,75) :</p>
+      <div class="row">
+        <input id="co-ot25" type="number" step="0.5" min="0" placeholder="€/h +25%" />
+        <input id="co-ot50" type="number" step="0.5" min="0" placeholder="€/h +50%" />
+        <input id="co-holiday" type="number" step="0.5" min="0" placeholder="€/h férié" />
+        <input id="co-weather" type="number" step="0.5" min="0" placeholder="€/h intemp." />
       </div>
       <button class="btn" id="add-co" style="margin-top:.5rem" ${offline ? "disabled" : ""}>Enregistrer le coût</button>
     </div>
@@ -729,6 +743,10 @@ function renderReferentiel() {
             workerId: v("co-worker"),
             chantierId: v("co-chantier"),
             hourlyRate: num("co-rate"),
+            overtime25Rate: num("co-ot25"),
+            overtime50Rate: num("co-ot50"),
+            holidayRate: num("co-holiday"),
+            weatherRate: num("co-weather"),
             mealAllowance: num("co-meal"),
             travelAllowance: num("co-travel"),
           }),

@@ -96,7 +96,15 @@ export interface Worker {
 export interface CostRate {
   workerId: string;
   chantierId: string;
-  hourlyRate?: number; // €/h chargé (sinon Worker.hourlyRate)
+  hourlyRate?: number; // €/h heure normale (sinon Worker.hourlyRate)
+  /** PU heure sup. +25 % (défaut : hourlyRate × 1,25). */
+  overtime25Rate?: number;
+  /** PU heure sup. +50 % (défaut : hourlyRate × 1,5). */
+  overtime50Rate?: number;
+  /** PU heure fériée travaillée (défaut : hourlyRate × 2). */
+  holidayRate?: number;
+  /** PU heure d'intempérie (défaut : hourlyRate × 0,75). */
+  weatherRate?: number;
   mealAllowance?: number; // panier repas €/jour travaillé
   travelAllowance?: number; // indemnité déplacement €/jour travaillé
 }

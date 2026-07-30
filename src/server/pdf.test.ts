@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { monthlyStatements } from "../core/index.js";
+import { billingStatements, monthlyStatements } from "../core/index.js";
 import type { Agency, Chantier, CostRate, TimeEntry, Worker } from "../core/index.js";
-import { interimMonthlyPdf, salariedMonthlyPdf } from "./pdf.js";
+import { interimBillingPdf, salariedMonthlyPdf } from "./pdf.js";
 
 const chantiers: Chantier[] = [
   { id: "c1", code: "C1", name: "Chantier Un", active: true },
@@ -41,14 +41,14 @@ function isPdf(buf: Buffer): boolean {
   return buf.length > 800 && buf.subarray(0, 5).toString("latin1") === "%PDF-";
 }
 
-describe("PDF relevé intérim", () => {
+describe("PDF relevé de facturation intérim", () => {
   it("génère un PDF non trivial pour l'agence", async () => {
-    const statements = monthlyStatements(data, workers, costs, "2026-07", (w) => w.type === "INTERIMAIRE");
-    const pdf = await interimMonthlyPdf(statements, chantiers, agencies, "2026-07");
+    const statements = billingStatements(data, workers, costs, "2026-07", (w) => w.type === "INTERIMAIRE");
+    const pdf = await interimBillingPdf(statements, chantiers, agencies, "2026-07", "Agence : ETT Démo");
     expect(isPdf(pdf)).toBe(true);
   });
   it("génère un PDF même sans intérimaire (message vide)", async () => {
-    const pdf = await interimMonthlyPdf([], chantiers, agencies, "2026-07");
+    const pdf = await interimBillingPdf([], chantiers, agencies, "2026-07");
     expect(isPdf(pdf)).toBe(true);
   });
 });

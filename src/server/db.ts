@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS costs (
   workerId        TEXT NOT NULL REFERENCES workers(id),
   chantierId      TEXT NOT NULL REFERENCES chantiers(id),
   hourlyRate      REAL,
+  overtime25Rate  REAL,
+  overtime50Rate  REAL,
+  holidayRate     REAL,
+  weatherRate     REAL,
   mealAllowance   REAL,
   travelAllowance REAL,
   PRIMARY KEY (workerId, chantierId)
@@ -108,6 +112,14 @@ function migrate(db: DB): void {
   const cols = db.prepare("PRAGMA table_info(workers)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "category")) {
     db.exec("ALTER TABLE workers ADD COLUMN category TEXT");
+  }
+
+  // Nouveaux prix unitaires sur la grille de coûts.
+  const costCols = db.prepare("PRAGMA table_info(costs)").all() as Array<{ name: string }>;
+  for (const col of ["overtime25Rate", "overtime50Rate", "holidayRate", "weatherRate"]) {
+    if (!costCols.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE costs ADD COLUMN ${col} REAL`);
+    }
   }
 
   // Ancienne contrainte CHECK à 2 valeurs → reconstruction de la table pour

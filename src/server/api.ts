@@ -31,7 +31,8 @@ import {
 import type { Agency, Chantier, CostRate, TimeEntry, Worker } from "../core/types.js";
 import type { Repository } from "./repository.js";
 import { newId, nowISO } from "./ids.js";
-import { interimMonthlyPdf, salariedMonthlyPdf } from "./pdf.js";
+import { interimBillingPdf, salariedMonthlyPdf } from "./pdf.js";
+import { billingStatements } from "../core/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(here, "..", "..", "web");
@@ -254,17 +255,35 @@ export function createApp(repo: Repository): Express {
       return res.status(400).json({ error: "paramètre month=YYYY-MM requis" });
     }
     const agencyId = req.query.agencyId as string | undefined;
-    const entries = repo.queryEntries({});
+    const chantierId = req.query.chantierId as string | undefined;
+    const category = req.query.category as string | undefined;
+
     const workers = repo.listWorkers();
     const costs = repo.listCosts();
-    const statements = monthlyStatements(
+    const chantiers = repo.listChantiers();
+    const agencies = repo.listAgencies();
+
+    // Filtre sur les pointages (par chantier) et sur les personnes (agence/catégorie).
+    const entries = repo.queryEntries(chantierId ? { chantierId } : {});
+    const statements = billingStatements(
       entries,
       workers,
       costs,
       month,
-      (w) => w.type === "INTERIMAIRE" && (!agencyId || w.agencyId === agencyId),
+      (w) =>
+        w.type === "INTERIMAIRE" &&
+        (!agencyId || w.agencyId === agencyId) &&
+        (!category || w.category === category),
     );
-    const pdf = await interimMonthlyPdf(statements, repo.listChantiers(), repo.listAgencies(), month);
+
+    // Libellé du filtre (impression par chantier / agence / catégorie).
+    const parts: string[] = [];
+    if (agencyId) parts.push(`Agence : ${agencies.find((a) => a.id === agencyId)?.name ?? agencyId}`);
+    if (chantierId) parts.push(`Chantier : ${chantiers.find((c) => c.id === chantierId)?.name ?? chantierId}`);
+    if (category) parts.push(`Catégorie : ${category}`);
+    const filterLabel = parts.join(" · ") || undefined;
+
+    const pdf = await interimBillingPdf(statements, chantiers, agencies, month, filterLabel);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="releve-interim-${month}.pdf"`);
     res.send(pdf);

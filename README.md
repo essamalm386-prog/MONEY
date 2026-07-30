@@ -19,9 +19,13 @@ L'application **fonctionne en local et en ligne** : saisie possible **hors-ligne
   et son **métier** ; **salarié** interne, **intérimaire** (rattaché à une agence),
   **stagiaire** ou **alternant** — tous suivis dans les équipes.
 - **Exports PDF mensuels** :
-  - **relevé intérim par agence (ETT)** : heures par chantier, jours travaillés,
-    ventilation des heures sup. par semaine et coût estimé — pour **comparer et
-    vérifier les factures des agences** ;
+  - **relevé de facturation intérim (ETT)** : pour chaque intérimaire et chaque
+    chantier, **ventilation par semaine** (S21, S22…) des heures **normales**,
+    **supplémentaires (+25 %/+50 %)**, **fériées** (jours fériés français
+    calculés automatiquement) et **intempéries**, avec **paniers repas**,
+    **indemnités de déplacement**, **prix unitaires** et **totaux** — pour
+    comparer et vérifier les factures des agences ;
+    impression **filtrable par agence, par chantier ou par catégorie** ;
   - **relevé salariés / stagiaires / alternants** : détail des **heures par chantier**.
 - **Coûts par chantier** (vue admin) : à la création d'une personne, on renseigne
   ce qu'elle **coûte** — salaire horaire chargé, **panier repas**, **indemnité de

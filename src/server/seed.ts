@@ -96,6 +96,8 @@ export function seed(repo: Repository): void {
   add({ workerId: "wk_koffi", chantierId: "ch_villeurb", date: "2026-07-30", kind: "TRAVAIL", minutes: 480 });
   // Moreau : accident bénin
   add({ workerId: "wk_moreau", chantierId: "ch_lyon", date: "2026-07-29", kind: "ACCIDENT", minutes: 180, accidentSeverity: "AVEC_ARRET", note: "Chute de plain-pied, entorse cheville" });
+  // Silva : journée fériée travaillée (14 juillet) → heures fériées sur le relevé.
+  add({ workerId: "wk_silva", chantierId: "ch_lyon", date: "2026-07-14", kind: "TRAVAIL", startTime: "07:30", endTime: "15:30", breakMinutes: 30, note: "Coulage urgent (jour férié)" });
 
   console.log(`Seed terminé : ${workers.length} personnes, ${n} pointages.`);
 }

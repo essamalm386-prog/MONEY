@@ -37,6 +37,10 @@ function rowToCost(r: any): CostRate {
     workerId: r.workerId,
     chantierId: r.chantierId,
     hourlyRate: r.hourlyRate ?? undefined,
+    overtime25Rate: r.overtime25Rate ?? undefined,
+    overtime50Rate: r.overtime50Rate ?? undefined,
+    holidayRate: r.holidayRate ?? undefined,
+    weatherRate: r.weatherRate ?? undefined,
     mealAllowance: r.mealAllowance ?? undefined,
     travelAllowance: r.travelAllowance ?? undefined,
   };
@@ -168,14 +172,22 @@ export class Repository {
   upsertCost(c: CostRate): void {
     this.db
       .prepare(
-        `INSERT INTO costs(workerId,chantierId,hourlyRate,mealAllowance,travelAllowance)
-         VALUES(@workerId,@chantierId,@hourlyRate,@mealAllowance,@travelAllowance)
+        `INSERT INTO costs(workerId,chantierId,hourlyRate,overtime25Rate,overtime50Rate,
+            holidayRate,weatherRate,mealAllowance,travelAllowance)
+         VALUES(@workerId,@chantierId,@hourlyRate,@overtime25Rate,@overtime50Rate,
+            @holidayRate,@weatherRate,@mealAllowance,@travelAllowance)
          ON CONFLICT(workerId,chantierId) DO UPDATE SET hourlyRate=@hourlyRate,
+           overtime25Rate=@overtime25Rate, overtime50Rate=@overtime50Rate,
+           holidayRate=@holidayRate, weatherRate=@weatherRate,
            mealAllowance=@mealAllowance, travelAllowance=@travelAllowance`,
       )
       .run({
         ...c,
         hourlyRate: c.hourlyRate ?? null,
+        overtime25Rate: c.overtime25Rate ?? null,
+        overtime50Rate: c.overtime50Rate ?? null,
+        holidayRate: c.holidayRate ?? null,
+        weatherRate: c.weatherRate ?? null,
         mealAllowance: c.mealAllowance ?? null,
         travelAllowance: c.travelAllowance ?? null,
       });
