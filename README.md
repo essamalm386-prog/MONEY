@@ -6,13 +6,25 @@ L'application **fonctionne en local et en ligne** : saisie possible **hors-ligne
 
 ## Fonctionnalités
 
+- **Planning des équipes** : le conducteur de travaux / gérant **affecte** chaque
+  semaine les personnes aux chantiers. Les chefs de chantier ne pointent que le
+  **personnel affecté**. Gestion des **remplacements en cours de semaine**
+  (un intérimaire quitte le chantier, un autre le remplace à partir d'un jour donné).
 - **Saisie quotidienne par chantier** : pour chaque personne de l'équipe, pointer
   - le **travail** (créneau début/fin + pause, ou total d'heures),
   - une **absence** (congé payé, RTT, maladie, formation, injustifiée…),
   - une **intempérie** (heures perdues, avec logique de chômage-intempéries BTP),
   - un **accident du travail** (gravité, circonstances, rappel du délai de déclaration 48 h).
-- **Tableaux de bord** jour / semaine / mois, avec synthèse **par personne, par chantier, par agence d'intérim / interne**.
-- **Heures supplémentaires** calculées selon les paliers (35 h légales, +25 % puis +50 %).
+- **Personnel** : chaque personne a sa **catégorie** (ouvrier, ETAM, cadre, apprenti)
+  et son **métier** ; employé interne ou intérimaire rattaché à une agence.
+- **Coûts par chantier** (vue admin) : à la création d'une personne, on renseigne
+  ce qu'elle **coûte** — salaire horaire chargé, **panier repas**, **indemnité de
+  déplacement** — et cela **en fonction de chaque chantier** (zones différentes).
+- **Tableaux de bord / bilan** jour / semaine / mois : heures et **coûts**
+  (main d'œuvre, paniers, déplacements, intempéries) **par personne, par chantier,
+  par agence d'intérim / interne**.
+- **Heures supplémentaires** calculées selon les paliers BTP (35 h légales, +25 %
+  puis +50 %) et intégrées à l'estimation de **paie hebdomadaire**.
 - **Local-first** : IndexedDB côté terrain + synchronisation avec le serveur (résolution de conflits déterministe).
 - **PWA installable** (mobile, tablette, PC) fonctionnant hors-ligne.
 
@@ -26,6 +38,8 @@ src/
     time.ts      Calcul d'heures, heures sup., indemnités intempéries
     rules.ts     Validation des pointages, doublons, délais accident
     reports.ts   Agrégations jour/semaine/mois, par personne/chantier/agence
+    assignments.ts Affectations d'équipes & remplacements en cours de semaine
+    cost.ts      Coûts (salaire, panier, déplacement) + paie hebdo avec heures sup.
     sync.ts      Fusion local-first & résolution de conflits
   server/      API REST (Express) + persistance SQLite (better-sqlite3, WAL)
     db.ts, repository.ts, api.ts, index.ts, seed.ts
@@ -71,8 +85,13 @@ npm run typecheck   # vérification TypeScript stricte
 ## Modèle de données
 
 - **Chantier** : code unique, nom, client, adresse, période.
-- **Personne** (`Worker`) : employé ou intérimaire, métier, agence (si intérim), taux horaire.
+- **Personne** (`Worker`) : employé ou intérimaire, **catégorie**, métier, agence
+  (si intérim), coût horaire par défaut.
 - **Agence** d'intérim.
+- **Grille de coût** (`CostRate`) : par (personne × chantier) — salaire horaire chargé,
+  panier repas, indemnité de déplacement.
+- **Affectation** (`Assignment`) : personne × chantier sur une période (semaine),
+  avec chaînage de **remplacement** en cours de semaine.
 - **Pointage** (`TimeEntry`) : personne × chantier × jour, nature (travail / absence /
   intempérie / accident), minutes, détails, versionné pour la synchronisation.
 

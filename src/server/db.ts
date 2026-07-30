@@ -34,11 +34,41 @@ CREATE TABLE IF NOT EXISTS workers (
   firstName  TEXT NOT NULL,
   lastName   TEXT NOT NULL,
   type       TEXT NOT NULL CHECK (type IN ('EMPLOYE','INTERIMAIRE')),
+  category   TEXT,
   trade      TEXT,
   agencyId   TEXT REFERENCES agencies(id),
   hourlyRate REAL,
   active     INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS costs (
+  workerId        TEXT NOT NULL REFERENCES workers(id),
+  chantierId      TEXT NOT NULL REFERENCES chantiers(id),
+  hourlyRate      REAL,
+  mealAllowance   REAL,
+  travelAllowance REAL,
+  PRIMARY KEY (workerId, chantierId)
+);
+
+CREATE TABLE IF NOT EXISTS assignments (
+  id               TEXT PRIMARY KEY,
+  workerId         TEXT NOT NULL REFERENCES workers(id),
+  chantierId       TEXT NOT NULL REFERENCES chantiers(id),
+  startDate        TEXT NOT NULL,
+  endDate          TEXT,
+  assignedBy       TEXT NOT NULL,
+  replacesWorkerId TEXT,
+  status           TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','ENDED')),
+  note             TEXT,
+  createdAt        TEXT NOT NULL,
+  updatedAt        TEXT NOT NULL,
+  version          INTEGER NOT NULL DEFAULT 1,
+  sync             TEXT NOT NULL DEFAULT 'SYNCED',
+  deleted          INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_assign_chantier ON assignments(chantierId);
+CREATE INDEX IF NOT EXISTS idx_assign_worker   ON assignments(workerId);
+CREATE INDEX IF NOT EXISTS idx_assign_dates    ON assignments(startDate, endDate);
 
 CREATE TABLE IF NOT EXISTS entries (
   id               TEXT PRIMARY KEY,
@@ -69,6 +99,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_entry_natural
   ON entries(workerId, chantierId, date, kind) WHERE deleted = 0;
 `;
 
+/**
+ * Migrations idempotentes pour les bases existantes : ajoute les colonnes
+ * manquantes sans perdre de données (les nouvelles tables sont créées par le
+ * schéma via CREATE TABLE IF NOT EXISTS).
+ */
+function migrate(db: DB): void {
+  const cols = db.prepare("PRAGMA table_info(workers)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "category")) {
+    db.exec("ALTER TABLE workers ADD COLUMN category TEXT");
+  }
+}
+
 /** Ouvre (ou crée) la base et applique le schéma. */
 export function openDb(path: string): DB {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -77,5 +119,6 @@ export function openDb(path: string): DB {
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }

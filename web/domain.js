@@ -118,3 +118,81 @@ export const SEVERITY_LABEL = {
   AVEC_ARRET: "Avec arrêt",
   GRAVE: "Grave",
 };
+
+export const CATEGORY_LABEL = {
+  OUVRIER: "Ouvrier",
+  ETAM: "ETAM",
+  CADRE: "Cadre",
+  APPRENTI: "Apprenti",
+};
+
+// --------- Coûts (mêmes règles que src/core/cost) ---------
+function weatherIndemnityAmount(lostMinutes, hourlyRate) {
+  const eligible = Math.max(0, lostMinutes - LABOR.WEATHER_DEDUCTIBLE_MINUTES);
+  const amount = minutesToHours(eligible) * hourlyRate * LABOR.WEATHER_INDEMNITY_RATE;
+  return Math.round(amount * 100) / 100;
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+/** Grille effective pour une personne sur un chantier (avec repli). */
+export function resolveRate(workerId, chantierId, workers, rates) {
+  const worker = workers.find((w) => w.id === workerId);
+  const rate = rates.find((r) => r.workerId === workerId && r.chantierId === chantierId);
+  return {
+    hourlyRate: rate?.hourlyRate ?? worker?.hourlyRate ?? 0,
+    mealAllowance: rate?.mealAllowance ?? 0,
+    travelAllowance: rate?.travelAllowance ?? 0,
+  };
+}
+
+/** Coût d'un pointage (jour). */
+export function entryCost(e, rate) {
+  let labor = 0;
+  let meal = 0;
+  let travel = 0;
+  let weather = 0;
+  if (e.kind === "TRAVAIL" || e.kind === "ACCIDENT") labor = minutesToHours(e.minutes) * rate.hourlyRate;
+  if (e.kind === "INTEMPERIE") weather = weatherIndemnityAmount(e.minutes, rate.hourlyRate);
+  if ((e.kind === "TRAVAIL" || e.kind === "ACCIDENT") && e.minutes > 0) {
+    meal = rate.mealAllowance;
+    travel = rate.travelAllowance;
+  }
+  return {
+    labor: round2(labor),
+    meal: round2(meal),
+    travel: round2(travel),
+    weather: round2(weather),
+    total: round2(labor + meal + travel + weather),
+  };
+}
+
+/** Coût total d'une liste de pointages. */
+export function totalCost(entries, workers, rates) {
+  const acc = { labor: 0, meal: 0, travel: 0, weather: 0, total: 0 };
+  for (const e of entries) {
+    if (e.deleted) continue;
+    const c = entryCost(e, resolveRate(e.workerId, e.chantierId, workers, rates));
+    for (const k of Object.keys(acc)) acc[k] = round2(acc[k] + c[k]);
+  }
+  return acc;
+}
+
+/** Une affectation couvre-t-elle la date ? */
+export function coversDate(a, date) {
+  if (a.deleted) return false;
+  if (date < a.startDate) return false;
+  if (a.endDate && date > a.endDate) return false;
+  return true;
+}
+
+/** Ids des personnes affectées à un chantier une date donnée. */
+export function assignedWorkerIds(assignments, chantierId, date) {
+  return [
+    ...new Set(
+      assignments
+        .filter((a) => a.chantierId === chantierId && coversDate(a, date))
+        .map((a) => a.workerId),
+    ),
+  ];
+}

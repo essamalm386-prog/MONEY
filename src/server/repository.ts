@@ -7,7 +7,9 @@
 import { resolve } from "../core/sync.js";
 import type {
   Agency,
+  Assignment,
   Chantier,
+  CostRate,
   TimeEntry,
   Worker,
 } from "../core/types.js";
@@ -22,10 +24,40 @@ function rowToWorker(r: any): Worker {
     firstName: r.firstName,
     lastName: r.lastName,
     type: r.type,
+    category: r.category ?? undefined,
     trade: r.trade ?? undefined,
     agencyId: r.agencyId ?? undefined,
     hourlyRate: r.hourlyRate ?? undefined,
     active: bool(r.active),
+  };
+}
+
+function rowToCost(r: any): CostRate {
+  return {
+    workerId: r.workerId,
+    chantierId: r.chantierId,
+    hourlyRate: r.hourlyRate ?? undefined,
+    mealAllowance: r.mealAllowance ?? undefined,
+    travelAllowance: r.travelAllowance ?? undefined,
+  };
+}
+
+function rowToAssignment(r: any): Assignment {
+  return {
+    id: r.id,
+    workerId: r.workerId,
+    chantierId: r.chantierId,
+    startDate: r.startDate,
+    endDate: r.endDate ?? undefined,
+    assignedBy: r.assignedBy,
+    replacesWorkerId: r.replacesWorkerId ?? undefined,
+    status: r.status,
+    note: r.note ?? undefined,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    version: r.version,
+    sync: r.sync,
+    deleted: bool(r.deleted),
   };
 }
 
@@ -111,13 +143,14 @@ export class Repository {
   upsertWorker(w: Worker): void {
     this.db
       .prepare(
-        `INSERT INTO workers(id,firstName,lastName,type,trade,agencyId,hourlyRate,active)
-         VALUES(@id,@firstName,@lastName,@type,@trade,@agencyId,@hourlyRate,@active)
+        `INSERT INTO workers(id,firstName,lastName,type,category,trade,agencyId,hourlyRate,active)
+         VALUES(@id,@firstName,@lastName,@type,@category,@trade,@agencyId,@hourlyRate,@active)
          ON CONFLICT(id) DO UPDATE SET firstName=@firstName,lastName=@lastName,type=@type,
-           trade=@trade,agencyId=@agencyId,hourlyRate=@hourlyRate,active=@active`,
+           category=@category,trade=@trade,agencyId=@agencyId,hourlyRate=@hourlyRate,active=@active`,
       )
       .run({
         ...w,
+        category: w.category ?? null,
         trade: w.trade ?? null,
         agencyId: w.agencyId ?? null,
         hourlyRate: w.hourlyRate ?? null,
@@ -129,6 +162,72 @@ export class Repository {
       .prepare("SELECT * FROM workers ORDER BY lastName, firstName")
       .all()
       .map(rowToWorker);
+  }
+
+  // --- Grille de coûts (personne × chantier) ---
+  upsertCost(c: CostRate): void {
+    this.db
+      .prepare(
+        `INSERT INTO costs(workerId,chantierId,hourlyRate,mealAllowance,travelAllowance)
+         VALUES(@workerId,@chantierId,@hourlyRate,@mealAllowance,@travelAllowance)
+         ON CONFLICT(workerId,chantierId) DO UPDATE SET hourlyRate=@hourlyRate,
+           mealAllowance=@mealAllowance, travelAllowance=@travelAllowance`,
+      )
+      .run({
+        ...c,
+        hourlyRate: c.hourlyRate ?? null,
+        mealAllowance: c.mealAllowance ?? null,
+        travelAllowance: c.travelAllowance ?? null,
+      });
+  }
+  listCosts(): CostRate[] {
+    return this.db.prepare("SELECT * FROM costs").all().map(rowToCost);
+  }
+
+  // --- Affectations ---
+  upsertAssignment(a: Assignment): void {
+    this.db
+      .prepare(
+        `INSERT INTO assignments(id,workerId,chantierId,startDate,endDate,assignedBy,
+            replacesWorkerId,status,note,createdAt,updatedAt,version,sync,deleted)
+         VALUES(@id,@workerId,@chantierId,@startDate,@endDate,@assignedBy,
+            @replacesWorkerId,@status,@note,@createdAt,@updatedAt,@version,@sync,@deleted)
+         ON CONFLICT(id) DO UPDATE SET workerId=@workerId,chantierId=@chantierId,startDate=@startDate,
+            endDate=@endDate,assignedBy=@assignedBy,replacesWorkerId=@replacesWorkerId,status=@status,
+            note=@note,updatedAt=@updatedAt,version=@version,sync=@sync,deleted=@deleted`,
+      )
+      .run({
+        ...a,
+        endDate: a.endDate ?? null,
+        replacesWorkerId: a.replacesWorkerId ?? null,
+        note: a.note ?? null,
+        sync: "SYNCED",
+        deleted: int(a.deleted, 0),
+      });
+  }
+  getAssignment(id: string): Assignment | undefined {
+    const r = this.db.prepare("SELECT * FROM assignments WHERE id = ?").get(id);
+    return r ? rowToAssignment(r) : undefined;
+  }
+  listAssignments(filter: { chantierId?: string; from?: string; to?: string } = {}): Assignment[] {
+    const clauses = ["deleted = 0"];
+    const params: Record<string, unknown> = {};
+    if (filter.chantierId) {
+      clauses.push("chantierId = @chantierId");
+      params.chantierId = filter.chantierId;
+    }
+    if (filter.to) {
+      clauses.push("startDate <= @to");
+      params.to = filter.to;
+    }
+    if (filter.from) {
+      clauses.push("(endDate IS NULL OR endDate >= @from)");
+      params.from = filter.from;
+    }
+    return this.db
+      .prepare(`SELECT * FROM assignments WHERE ${clauses.join(" AND ")} ORDER BY startDate`)
+      .all(params)
+      .map(rowToAssignment);
   }
 
   // --- Pointages ---

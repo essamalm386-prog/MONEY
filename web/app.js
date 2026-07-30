@@ -5,12 +5,16 @@
 import { Store } from "./store.js";
 import {
   ABSENCE_LABEL,
+  CATEGORY_LABEL,
   KIND_LABEL,
   SEVERITY_LABEL,
+  entryCost,
   groupBy,
   isoWeekKey,
   minutesToHours,
   monthKey,
+  resolveRate,
+  totalCost,
   totals,
   weeklyOvertime,
   workedMinutes,
@@ -25,7 +29,9 @@ const state = {
   date: new Date().toISOString().slice(0, 10),
   chantierId: "",
   period: "jour", // jour | semaine | mois
-  ref: { chantiers: [], workers: [], agencies: [] },
+  showAll: false, // pointage : afficher tout le monde (hors affectation)
+  planWeek: new Date().toISOString().slice(0, 10),
+  ref: { chantiers: [], workers: [], agencies: [], assignments: [], costs: [] },
 };
 
 // --------- Utilitaires UI ---------
@@ -54,6 +60,22 @@ function agencyName(id) {
 function fmtH(minutes) {
   return `${minutesToHours(minutes).toLocaleString("fr-FR")} h`;
 }
+function fmtEur(n) {
+  return `${(Math.round(n * 100) / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+}
+function workerById(id) {
+  return state.ref.workers.find((w) => w.id === id);
+}
+function assignedIdsForDate(chantierId, date) {
+  const ids = new Set();
+  for (const a of state.ref.assignments) {
+    if (a.deleted || a.chantierId !== chantierId) continue;
+    if (date < a.startDate) continue;
+    if (a.endDate && date > a.endDate) continue;
+    ids.add(a.workerId);
+  }
+  return ids;
+}
 
 // --------- Barre de statut réseau ---------
 async function refreshStatus() {
@@ -79,7 +101,17 @@ async function renderPointage() {
 
   const entries = await store.entriesForDate(state.date, state.chantierId);
   const byWorker = new Map(entries.map((e) => [e.workerId, e]));
-  const workers = state.ref.workers.filter((w) => w.active);
+
+  // Personnel affecté à ce chantier ce jour-là (roster).
+  const assignedIds = assignedIdsForDate(state.chantierId, state.date);
+  const all = state.ref.workers.filter((w) => w.active);
+  let team = all.filter((w) => assignedIds.has(w.id));
+  // Personnes non affectées mais déjà pointées ce jour (ex. remplacement).
+  for (const e of entries) if (!assignedIds.has(e.workerId)) {
+    const w = workerById(e.workerId);
+    if (w && !team.includes(w)) team.push(w);
+  }
+  if (state.showAll) team = all;
 
   view.innerHTML = `
     <div class="card">
@@ -98,18 +130,27 @@ async function renderPointage() {
     </div>
 
     <div class="card">
-      <h2>Équipe — ${esc(chantierName(state.chantierId))}</h2>
-      ${workers.length === 0 ? `<div class="empty">Aucune personne. Ajoutez-en dans l'onglet Référentiel.</div>` : ""}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+        <h2 style="margin:0">Équipe affectée — ${esc(chantierName(state.chantierId))}</h2>
+        <button class="btn ghost sm" id="toggle-all">${state.showAll ? "Voir affectés" : "Voir tous"}</button>
+      </div>
+      <p class="muted" style="margin:.5rem 0 0">${team.length} personne(s) · ${state.date}</p>
+      ${
+        team.length === 0
+          ? `<div class="empty">Personne n'est affecté à ce chantier ce jour.<br/>Affectez l'équipe dans l'onglet <strong>Planning</strong>, ou « Voir tous » pour un ajout exceptionnel.</div>`
+          : ""
+      }
       <div id="worker-list">
-        ${workers
+        ${team
           .map((w) => {
             const e = byWorker.get(w.id);
             const info = e ? entrySummary(e) : `<span class="muted">Non pointé</span>`;
+            const exceptional = !assignedIds.has(w.id);
             return `
             <div class="worker-row">
               <div class="who">
-                <div class="name">${esc(w.firstName)} ${esc(w.lastName)}</div>
-                <div class="meta"><span class="pill ${w.type}">${w.type === "EMPLOYE" ? "Employé" : "Intérim"}</span> ${esc(w.trade || "")}</div>
+                <div class="name">${esc(w.firstName)} ${esc(w.lastName)} ${exceptional ? `<span class="pill" style="border-color:var(--warn);color:var(--warn)">hors affectation</span>` : ""}</div>
+                <div class="meta"><span class="pill ${w.type}">${w.type === "EMPLOYE" ? "Employé" : "Intérim"}</span> ${w.category ? esc(CATEGORY_LABEL[w.category] || w.category) + " · " : ""}${esc(w.trade || "")}</div>
                 <div style="margin-top:.25rem">${info}</div>
               </div>
               <button class="btn sm" data-point="${w.id}">${e ? "Modifier" : "Pointer"}</button>
@@ -125,6 +166,10 @@ async function renderPointage() {
   };
   el("f-date").onchange = (ev) => {
     state.date = ev.target.value;
+    renderPointage();
+  };
+  el("toggle-all").onclick = () => {
+    state.showAll = !state.showAll;
     renderPointage();
   };
   view.querySelectorAll("[data-point]").forEach((b) => {
@@ -281,6 +326,141 @@ function collectFields(kind, overlay, workerId, existing) {
 }
 
 // =====================================================================
+//  VUE PLANNING (affectations)
+// =====================================================================
+function weekBounds(anyDate) {
+  const wd = new Date(anyDate + "T00:00:00Z").getUTCDay();
+  const iso = wd === 0 ? 7 : wd;
+  const monday = new Date(anyDate + "T00:00:00Z");
+  monday.setUTCDate(monday.getUTCDate() - (iso - 1));
+  const sunday = new Date(monday);
+  sunday.setUTCDate(sunday.getUTCDate() + 6);
+  return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+}
+
+function renderPlanning() {
+  const { chantiers, assignments, workers } = state.ref;
+  if (!state.chantierId && chantiers[0]) state.chantierId = chantiers[0].id;
+  const offline = !store.online;
+  const { from, to } = weekBounds(state.planWeek);
+
+  // Affectations du chantier qui recoupent la semaine.
+  const weekAsg = assignments.filter(
+    (a) => !a.deleted && a.chantierId === state.chantierId && a.startDate <= to && (!a.endDate || a.endDate >= from),
+  );
+  const assignedIds = new Set(weekAsg.filter((a) => a.status === "ACTIVE").map((a) => a.workerId));
+  const available = workers.filter((w) => w.active && !assignedIds.has(w.id));
+
+  view.innerHTML = `
+    ${offline ? `<div class="card"><span class="muted">🔌 Hors-ligne : le planning nécessite une connexion.</span></div>` : ""}
+    <div class="card">
+      <div class="row">
+        <div><label>Chantier</label>
+          <select id="pl-chantier">${chantiers.map((c) => `<option value="${c.id}" ${c.id === state.chantierId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
+        </div>
+        <div><label>Semaine (un jour)</label><input type="date" id="pl-week" value="${state.planWeek}" /></div>
+      </div>
+      <p class="muted">Semaine du ${from} au ${to}</p>
+    </div>
+
+    <div class="card">
+      <h2>Équipe affectée (${weekAsg.length})</h2>
+      ${weekAsg.length === 0 ? `<div class="empty">Aucune affectation cette semaine.</div>` : ""}
+      ${weekAsg
+        .sort((a, b) => a.startDate.localeCompare(b.startDate))
+        .map((a) => {
+          const w = workerById(a.workerId);
+          const ended = a.status === "ENDED";
+          return `<div class="worker-row">
+            <div class="who">
+              <div class="name">${w ? esc(w.firstName + " " + w.lastName) : a.workerId} ${a.replacesWorkerId ? `<span class="pill" style="border-color:var(--accent);color:var(--accent)">remplaçant</span>` : ""}</div>
+              <div class="meta">${a.startDate} → ${a.endDate || "…"} ${ended ? `· <span style="color:var(--muted)">clôturée</span>` : ""}</div>
+            </div>
+            ${!ended ? `<button class="btn ghost sm" data-replace="${a.id}" ${offline ? "disabled" : ""}>Remplacer</button>` : ""}
+          </div>`;
+        })
+        .join("")}
+    </div>
+
+    <div class="card">
+      <h2>Affecter une personne</h2>
+      <label>Personne disponible</label>
+      <select id="pl-worker">${available.map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)} — ${w.type === "EMPLOYE" ? "Employé" : "Intérim"} ${esc(w.trade || "")}</option>`).join("")}</select>
+      <button class="btn" id="pl-add" style="margin-top:.6rem" ${offline || available.length === 0 ? "disabled" : ""}>Affecter pour la semaine</button>
+    </div>`;
+
+  el("pl-chantier").onchange = (ev) => {
+    state.chantierId = ev.target.value;
+    renderPlanning();
+  };
+  el("pl-week").onchange = (ev) => {
+    state.planWeek = ev.target.value;
+    renderPlanning();
+  };
+  el("pl-add").onclick = async () => {
+    const workerId = el("pl-worker").value;
+    if (!workerId) return;
+    try {
+      await store.addAssignment({ workerId, chantierId: state.chantierId, anyDate: state.planWeek, assignedBy: "conducteur" });
+      await loadReference();
+      toast("Personne affectée");
+      renderPlanning();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  };
+  view.querySelectorAll("[data-replace]").forEach((b) => {
+    b.onclick = () => openReplaceSheet(b.getAttribute("data-replace"), weekAsg);
+  });
+}
+
+function openReplaceSheet(assignmentId, weekAsg) {
+  const asg = weekAsg.find((a) => a.id === assignmentId);
+  if (!asg) return;
+  const leaving = workerById(asg.workerId);
+  const { workers } = state.ref;
+  const candidates = workers.filter((w) => w.active && w.id !== asg.workerId);
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  overlay.innerHTML = `
+    <div class="sheet">
+      <h3>Remplacer ${leaving ? esc(leaving.firstName + " " + leaving.lastName) : ""}</h3>
+      <label>Remplaçant</label>
+      <select id="rep-worker">${candidates.map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)} — ${w.type === "EMPLOYE" ? "Employé" : "Intérim"} ${esc(w.trade || "")}</option>`).join("")}</select>
+      <label>À partir du</label>
+      <input type="date" id="rep-date" value="${state.date}" min="${asg.startDate}" ${asg.endDate ? `max="${asg.endDate}"` : ""} />
+      <label>Motif</label>
+      <input id="rep-note" placeholder="Ex. arrêt maladie, fin de mission…" />
+      <div class="row" style="margin-top:1rem">
+        <button class="btn ghost" id="rep-cancel">Annuler</button>
+        <button class="btn" id="rep-save">Valider le remplacement</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector("#rep-cancel").onclick = close;
+  overlay.onclick = (ev) => {
+    if (ev.target === overlay) close();
+  };
+  overlay.querySelector("#rep-save").onclick = async () => {
+    try {
+      await store.replaceAssignment(assignmentId, {
+        newWorkerId: overlay.querySelector("#rep-worker").value,
+        fromDate: overlay.querySelector("#rep-date").value,
+        assignedBy: "conducteur",
+        note: overlay.querySelector("#rep-note").value,
+      });
+      await loadReference();
+      close();
+      toast("Remplacement enregistré");
+      renderPlanning();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  };
+}
+
+// =====================================================================
 //  VUE TABLEAU DE BORD
 // =====================================================================
 async function renderDashboard() {
@@ -295,6 +475,7 @@ async function renderDashboard() {
     const w = state.ref.workers.find((x) => x.id === e.workerId);
     return w?.agencyId || "INTERNE";
   });
+  const cost = totalCost(inRange, state.ref.workers, state.ref.costs);
 
   view.innerHTML = `
     <div class="card">
@@ -318,8 +499,20 @@ async function renderDashboard() {
       </div>
     </div>
 
+    <div class="card">
+      <h2>Coût estimé (admin)</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v" style="font-size:1.25rem">${fmtEur(cost.total)}</div><div class="l">Coût total</div></div>
+        <div class="kpi"><div class="v" style="font-size:1.25rem">${fmtEur(cost.labor)}</div><div class="l">Main d'œuvre</div></div>
+        <div class="kpi"><div class="v" style="font-size:1.25rem">${fmtEur(cost.meal)}</div><div class="l">Paniers repas</div></div>
+        <div class="kpi"><div class="v" style="font-size:1.25rem">${fmtEur(cost.travel + cost.weather)}</div><div class="l">Déplacements + intemp.</div></div>
+      </div>
+    </div>
+
     ${tableCard("Par personne", perWorker, workerName, state.period === "semaine")}
+    ${costTableCard("Coût par personne", perWorker, workerName)}
     ${tableCard("Par chantier", perChantier, chantierName, false)}
+    ${costTableCard("Coût par chantier", perChantier, chantierName)}
     ${tableCard("Par agence / interne", perAgency, agencyName, false)}
   `;
 
@@ -371,6 +564,40 @@ function tableCard(title, group, nameOf, showOvertime) {
     </div>`;
 }
 
+function costTableCard(title, group, nameOf) {
+  const rows = [...group.entries()]
+    .map(([key, list]) => {
+      const c = { labor: 0, meal: 0, travel: 0, weather: 0, total: 0 };
+      for (const e of list) {
+        const ec = entryCost(e, resolveRate(e.workerId, e.chantierId, state.ref.workers, state.ref.costs));
+        for (const k of Object.keys(c)) c[k] += ec[k];
+      }
+      return { key, c };
+    })
+    .filter((r) => r.c.total > 0)
+    .sort((a, b) => b.c.total - a.c.total);
+  if (rows.length === 0) return "";
+  return `
+    <div class="card">
+      <h2>${title}</h2>
+      <table>
+        <thead><tr><th>${title.includes("personne") ? "Personne" : "Chantier"}</th>
+          <th class="num">Main d'œuvre</th><th class="num">Panier</th><th class="num">Dépl.</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (r) => `<tr><td>${esc(nameOf(r.key))}</td>
+                <td class="num">${fmtEur(r.c.labor)}</td>
+                <td class="num">${fmtEur(r.c.meal)}</td>
+                <td class="num">${fmtEur(r.c.travel + r.c.weather)}</td>
+                <td class="num"><strong>${fmtEur(r.c.total)}</strong></td></tr>`,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
 function periodRange() {
   const d = state.date;
   if (state.period === "jour") return { from: d, to: d, label: d };
@@ -409,14 +636,34 @@ function renderReferentiel() {
 
     <div class="card">
       <h2>Personnes (${workers.length})</h2>
-      <div>${workers.map((w) => `<div class="worker-row"><div class="who"><div class="name">${esc(w.firstName)} ${esc(w.lastName)}</div><div class="meta"><span class="pill ${w.type}">${w.type === "EMPLOYE" ? "Employé" : "Intérim"}</span> ${esc(w.trade || "")}${w.agencyId ? " · " + esc(agencyName(w.agencyId)) : ""}</div></div></div>`).join("") || `<div class="empty">Aucune personne</div>`}</div>
+      <div>${workers.map((w) => `<div class="worker-row"><div class="who"><div class="name">${esc(w.firstName)} ${esc(w.lastName)}</div><div class="meta"><span class="pill ${w.type}">${w.type === "EMPLOYE" ? "Employé" : "Intérim"}</span> ${w.category ? esc(CATEGORY_LABEL[w.category] || w.category) + " · " : ""}${esc(w.trade || "")}${w.agencyId ? " · " + esc(agencyName(w.agencyId)) : ""}${w.hourlyRate ? " · " + fmtEur(w.hourlyRate) + "/h" : ""}</div></div></div>`).join("") || `<div class="empty">Aucune personne</div>`}</div>
       <div class="row" style="margin-top:.75rem"><input id="w-first" placeholder="Prénom" /><input id="w-last" placeholder="Nom" /></div>
       <div class="row" style="margin-top:.5rem">
         <select id="w-type"><option value="EMPLOYE">Employé</option><option value="INTERIMAIRE">Intérimaire</option></select>
-        <input id="w-trade" placeholder="Métier" />
+        <select id="w-cat">${Object.entries(CATEGORY_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+      </div>
+      <div class="row" style="margin-top:.5rem">
+        <input id="w-trade" placeholder="Métier (maçon, coffreur…)" />
+        <input id="w-rate" type="number" step="0.5" min="0" placeholder="Coût horaire €/h" />
       </div>
       <select id="w-agency" style="margin-top:.5rem"><option value="">— Agence (si intérim) —</option>${agencies.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>
       <button class="btn" id="add-w" style="margin-top:.5rem" ${offline ? "disabled" : ""}>Ajouter la personne</button>
+    </div>
+
+    <div class="card">
+      <h2>Coûts par chantier</h2>
+      <p class="muted">Ce que coûte une personne selon le chantier : salaire horaire chargé, panier repas et indemnité de déplacement (par jour travaillé).</p>
+      <div>${state.ref.costs.map((c) => `<div class="worker-row"><div class="who"><div class="name">${esc(workerName(c.workerId))}</div><div class="meta">${esc(chantierName(c.chantierId))} · ${c.hourlyRate ? fmtEur(c.hourlyRate) + "/h · " : ""}panier ${fmtEur(c.mealAllowance || 0)} · dépl. ${fmtEur(c.travelAllowance || 0)}</div></div></div>`).join("") || `<div class="empty">Aucune grille de coût</div>`}</div>
+      <div class="row" style="margin-top:.75rem">
+        <select id="co-worker">${workers.map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)}</option>`).join("")}</select>
+        <select id="co-chantier">${chantiers.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select>
+      </div>
+      <div class="row" style="margin-top:.5rem">
+        <input id="co-rate" type="number" step="0.5" min="0" placeholder="€/h chargé" />
+        <input id="co-meal" type="number" step="0.5" min="0" placeholder="Panier €/j" />
+        <input id="co-travel" type="number" step="0.5" min="0" placeholder="Déplacement €/j" />
+      </div>
+      <button class="btn" id="add-co" style="margin-top:.5rem" ${offline ? "disabled" : ""}>Enregistrer le coût</button>
     </div>
 
     <div class="card">
@@ -427,9 +674,40 @@ function renderReferentiel() {
     </div>`;
 
   const v = (id) => el(id)?.value.trim();
+  const num = (id) => {
+    const x = Number(el(id)?.value);
+    return Number.isFinite(x) && x > 0 ? x : undefined;
+  };
   el("add-ch") && (el("add-ch").onclick = () => guarded(() => store.addChantier({ code: v("ch-code"), name: v("ch-name"), client: v("ch-client") }), "Chantier ajouté"));
-  el("add-w") && (el("add-w").onclick = () => guarded(() => store.addWorker({ firstName: v("w-first"), lastName: v("w-last"), type: v("w-type"), trade: v("w-trade"), agencyId: v("w-agency") || undefined }), "Personne ajoutée"));
+  el("add-w") &&
+    (el("add-w").onclick = () =>
+      guarded(
+        () =>
+          store.addWorker({
+            firstName: v("w-first"),
+            lastName: v("w-last"),
+            type: v("w-type"),
+            category: v("w-cat"),
+            trade: v("w-trade"),
+            hourlyRate: num("w-rate"),
+            agencyId: v("w-agency") || undefined,
+          }),
+        "Personne ajoutée",
+      ));
   el("add-a") && (el("add-a").onclick = () => guarded(() => store.addAgency({ name: v("a-name") }), "Agence ajoutée"));
+  el("add-co") &&
+    (el("add-co").onclick = () =>
+      guarded(
+        () =>
+          store.addCost({
+            workerId: v("co-worker"),
+            chantierId: v("co-chantier"),
+            hourlyRate: num("co-rate"),
+            mealAllowance: num("co-meal"),
+            travelAllowance: num("co-travel"),
+          }),
+        "Coût enregistré",
+      ));
 }
 
 async function guarded(fn, okMsg) {
@@ -452,6 +730,7 @@ async function loadReference() {
 
 function render() {
   if (state.tab === "pointage") renderPointage();
+  else if (state.tab === "planning") renderPlanning();
   else if (state.tab === "dashboard") renderDashboard();
   else renderReferentiel();
   refreshStatus();

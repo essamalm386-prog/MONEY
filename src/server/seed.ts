@@ -2,7 +2,7 @@
  * Jeu de données de démonstration : 2 chantiers, 1 agence, 5 personnes et une
  * semaine de pointages (travail, intempérie, absence, accident).
  */
-import { buildTimeEntry, type TimeEntryInput } from "../core/index.js";
+import { buildTimeEntry, buildWeekAssignment, replaceWorker, type TimeEntryInput } from "../core/index.js";
 import { openDb } from "./db.js";
 import { Repository } from "./repository.js";
 import { nowISO } from "./ids.js";
@@ -22,13 +22,54 @@ export function seed(repo: Repository): void {
   });
 
   const workers = [
-    { id: "wk_martin", firstName: "Karim", lastName: "Benali", type: "EMPLOYE" as const, trade: "Chef d'équipe maçonnerie", hourlyRate: 24, active: true },
-    { id: "wk_dupont", firstName: "Luc", lastName: "Dupont", type: "EMPLOYE" as const, trade: "Coffreur", hourlyRate: 21, active: true },
-    { id: "wk_silva", firstName: "João", lastName: "Silva", type: "INTERIMAIRE" as const, trade: "Maçon", agencyId: "ag_demo", hourlyRate: 20, active: true },
-    { id: "wk_koffi", firstName: "Yao", lastName: "Koffi", type: "INTERIMAIRE" as const, trade: "Manœuvre", agencyId: "ag_demo", hourlyRate: 18, active: true },
-    { id: "wk_moreau", firstName: "Sophie", lastName: "Moreau", type: "EMPLOYE" as const, trade: "Grutier", hourlyRate: 23, active: true },
+    { id: "wk_martin", firstName: "Karim", lastName: "Benali", type: "EMPLOYE" as const, category: "ETAM", trade: "Chef d'équipe maçonnerie", hourlyRate: 24, active: true },
+    { id: "wk_dupont", firstName: "Luc", lastName: "Dupont", type: "EMPLOYE" as const, category: "OUVRIER", trade: "Coffreur", hourlyRate: 21, active: true },
+    { id: "wk_silva", firstName: "João", lastName: "Silva", type: "INTERIMAIRE" as const, category: "OUVRIER", trade: "Maçon", agencyId: "ag_demo", hourlyRate: 20, active: true },
+    { id: "wk_koffi", firstName: "Yao", lastName: "Koffi", type: "INTERIMAIRE" as const, category: "OUVRIER", trade: "Manœuvre", agencyId: "ag_demo", hourlyRate: 18, active: true },
+    { id: "wk_moreau", firstName: "Sophie", lastName: "Moreau", type: "EMPLOYE" as const, category: "OUVRIER", trade: "Grutier", hourlyRate: 23, active: true },
+    { id: "wk_petit", firstName: "Marc", lastName: "Petit", type: "INTERIMAIRE" as const, category: "OUVRIER", trade: "Manœuvre", agencyId: "ag_demo", hourlyRate: 18, active: true },
   ];
   for (const w of workers) repo.upsertWorker(w);
+
+  // Grille de coûts par chantier : panier repas + indemnité de déplacement
+  // (le chantier de Villeurbanne, plus éloigné, ouvre une indemnité plus élevée).
+  const costs = [
+    { workerId: "wk_dupont", chantierId: "ch_lyon", mealAllowance: 11, travelAllowance: 8 },
+    { workerId: "wk_silva", chantierId: "ch_lyon", mealAllowance: 11, travelAllowance: 8 },
+    { workerId: "wk_moreau", chantierId: "ch_lyon", mealAllowance: 11, travelAllowance: 8 },
+    { workerId: "wk_koffi", chantierId: "ch_villeurb", mealAllowance: 11, travelAllowance: 18 },
+    { workerId: "wk_petit", chantierId: "ch_villeurb", mealAllowance: 11, travelAllowance: 18 },
+  ];
+  for (const c of costs) repo.upsertCost(c);
+
+  // Affectations de la semaine (décidées par le conducteur de travaux).
+  const cond = "conducteur1";
+  const week1 = "2026-07-30";
+  const asgList = [
+    { workerId: "wk_dupont", chantierId: "ch_lyon" },
+    { workerId: "wk_silva", chantierId: "ch_lyon" },
+    { workerId: "wk_moreau", chantierId: "ch_lyon" },
+  ];
+  let ai = 0;
+  for (const a of asgList) {
+    ai += 1;
+    repo.upsertAssignment(
+      buildWeekAssignment({ ...a, anyDate: week1, assignedBy: cond }, { id: `asg_${ai}`, now: nowISO() }),
+    );
+  }
+  // Remplacement en cours de semaine : Koffi (arrêt maladie) remplacé par Petit dès le jeudi.
+  const koffiAsg = buildWeekAssignment(
+    { workerId: "wk_koffi", chantierId: "ch_villeurb", anyDate: week1, assignedBy: cond },
+    { id: "asg_koffi", now: nowISO() },
+  );
+  const { ended, replacement } = replaceWorker(koffiAsg, "wk_petit", "2026-07-30", {
+    id: "asg_petit",
+    now: nowISO(),
+    assignedBy: cond,
+    note: "Remplacement suite arrêt maladie",
+  });
+  repo.upsertAssignment(ended);
+  repo.upsertAssignment(replacement);
 
   const chef = "wk_martin";
   const week = ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31"];

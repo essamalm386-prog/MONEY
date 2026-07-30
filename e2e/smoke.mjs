@@ -65,7 +65,22 @@ async function main() {
     await fetch(BASE + "/api/workers", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "wk_e2e", firstName: "Test", lastName: "Ouvrier", type: "EMPLOYE", trade: "Maçon" }),
+      body: JSON.stringify({
+        id: "wk_e2e",
+        firstName: "Test",
+        lastName: "Ouvrier",
+        type: "EMPLOYE",
+        category: "OUVRIER",
+        trade: "Maçon",
+        hourlyRate: 20,
+        costs: [{ chantierId: "ch_e2e", mealAllowance: 10, travelAllowance: 8 }],
+      }),
+    });
+    // Affectation de la personne au chantier pour la semaine (conducteur de travaux).
+    await fetch(BASE + "/api/assignments", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workerId: "wk_e2e", chantierId: "ch_e2e", anyDate: "2026-07-30", assignedBy: "cond_e2e" }),
     });
 
     browser = await chromium.launch({
@@ -119,6 +134,12 @@ async function main() {
     const workedText = await page.locator(".kpi .v").first().innerText();
     assert(workedText.replace(",", ".").trim() === "8", `KPI heures = ${workedText}, attendu 8`);
     console.log("✓ Tableau de bord agrège correctement (8 h)");
+
+    // Coût : 8h×20 + panier 10 + déplacement 8 = 178 €.
+    await page.waitForSelector("text=Coût estimé");
+    const costTotal = await page.locator(".kpi .v").nth(4).innerText();
+    assert(costTotal.includes("178"), `coût total = ${costTotal}, attendu ~178 €`);
+    console.log("✓ Coût estimé correct (178 €)");
 
     assert(errors.length === 0, `erreurs JS dans la page: ${errors.join(" | ")}`);
     console.log("\n✅ E2E OK — parcours complet validé (UI → IndexedDB → API → SQLite → rapports)");

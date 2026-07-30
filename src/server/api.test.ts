@@ -37,7 +37,7 @@ const post = (p: string, body: unknown) =>
 describe("API référentiels", () => {
   it("liste chantiers et personnes issus du seed", async () => {
     expect((await get("/api/chantiers")).length).toBe(2);
-    expect((await get("/api/workers")).length).toBe(5);
+    expect((await get("/api/workers")).length).toBe(6);
     expect((await get("/api/agencies")).length).toBe(1);
   });
   it("health", async () => {
@@ -100,6 +100,66 @@ describe("API rapports", () => {
     expect(rep.totals.absenceDays).toBe(1);
     expect(Object.keys(rep.byChantier).length).toBe(2);
     expect(rep.weeklyByWorker.length).toBeGreaterThan(0);
+  });
+});
+
+describe("API affectations & remplacement", () => {
+  it("roster : liste les personnes affectées à un chantier un jour donné", async () => {
+    const roster = await get("/api/roster?chantierId=ch_lyon&date=2026-07-30");
+    const ids = roster.map((w: { id: string }) => w.id).sort();
+    expect(ids).toContain("wk_dupont");
+    expect(ids).toContain("wk_silva");
+  });
+
+  it("remplacement en cours de semaine bascule le roster", async () => {
+    // Avant remplacement, Koffi est sur Villeurbanne le 29.
+    const before = await get("/api/roster?chantierId=ch_villeurb&date=2026-07-29");
+    expect(before.map((w: { id: string }) => w.id)).toContain("wk_koffi");
+    // À partir du 30, c'est Petit (remplaçant) — posé par le seed.
+    const after = await get("/api/roster?chantierId=ch_villeurb&date=2026-07-30");
+    const ids = after.map((w: { id: string }) => w.id);
+    expect(ids).toContain("wk_petit");
+    expect(ids).not.toContain("wk_koffi");
+  });
+
+  it("crée une affectation hebdomadaire (lundi→dimanche)", async () => {
+    const res = await post("/api/assignments", {
+      workerId: "wk_dupont",
+      chantierId: "ch_villeurb",
+      anyDate: "2026-08-05",
+      assignedBy: "conducteur1",
+    });
+    expect(res.status).toBe(201);
+    const a = (await res.json()) as any;
+    expect(a.startDate).toBe("2026-08-03");
+    expect(a.endDate).toBe("2026-08-09");
+  });
+});
+
+describe("API coûts", () => {
+  it("le rapport inclut les coûts et la paie hebdomadaire", async () => {
+    const rep = await get("/api/reports/summary?from=2026-07-27&to=2026-07-31");
+    expect(rep.cost).toBeDefined();
+    expect(rep.cost.total.total).toBeGreaterThan(0);
+    expect(rep.cost.total.meal).toBeGreaterThan(0);
+    expect(rep.cost.total.travel).toBeGreaterThan(0);
+    expect(Array.isArray(rep.payroll)).toBe(true);
+    // Une ligne de paie doit exposer les heures sup.
+    const withOt = rep.payroll.find((l: any) => l.overtime25Hours > 0 || l.paidEquivalentHours > 0);
+    expect(withOt).toBeDefined();
+  });
+
+  it("crée une grille de coût pour une personne sur un chantier", async () => {
+    const res = await post("/api/costs", {
+      workerId: "wk_silva",
+      chantierId: "ch_villeurb",
+      hourlyRate: 21,
+      mealAllowance: 11,
+      travelAllowance: 18,
+    });
+    expect(res.status).toBe(201);
+    const costs = await get("/api/costs");
+    expect(costs.some((c: any) => c.workerId === "wk_silva" && c.chantierId === "ch_villeurb")).toBe(true);
   });
 });
 

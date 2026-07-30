@@ -81,23 +81,33 @@ export class Store {
   // --- Référentiels (cache local + API) ---
   async refreshReference() {
     if (!this.online) return this._cachedReference();
-    const [chantiers, workers, agencies] = await Promise.all([
+    const [chantiers, workers, agencies, assignments, costs] = await Promise.all([
       fetch("/api/chantiers").then((r) => r.json()),
       fetch("/api/workers").then((r) => r.json()),
       fetch("/api/agencies").then((r) => r.json()),
+      fetch("/api/assignments").then((r) => r.json()),
+      fetch("/api/costs").then((r) => r.json()),
     ]);
     await tx(this.db, "ref", "readwrite", (s) => {
       s.put({ key: "chantiers", value: chantiers });
       s.put({ key: "workers", value: workers });
       s.put({ key: "agencies", value: agencies });
+      s.put({ key: "assignments", value: assignments });
+      s.put({ key: "costs", value: costs });
     });
-    return { chantiers, workers, agencies };
+    return { chantiers, workers, agencies, assignments, costs };
   }
 
   async _cachedReference() {
     const rows = await tx(this.db, "ref", "readonly", (s) => getAll(s));
     const by = Object.fromEntries((await rows).map((r) => [r.key, r.value]));
-    return { chantiers: by.chantiers || [], workers: by.workers || [], agencies: by.agencies || [] };
+    return {
+      chantiers: by.chantiers || [],
+      workers: by.workers || [],
+      agencies: by.agencies || [],
+      assignments: by.assignments || [],
+      costs: by.costs || [],
+    };
   }
 
   async reference() {
@@ -112,6 +122,27 @@ export class Store {
   }
   async addAgency(payload) {
     return this._postRef("/api/agencies", "agencies", payload);
+  }
+  async addCost(payload) {
+    return this._postRef("/api/costs", "costs", payload);
+  }
+  async addAssignment(payload) {
+    return this._postRef("/api/assignments", "assignments", payload);
+  }
+  async replaceAssignment(assignmentId, payload) {
+    return this._postRef(`/api/assignments/${assignmentId}/replace`, "assignments", payload);
+  }
+  /** Roster : personnes affectées à un chantier une date donnée. */
+  async roster(chantierId, date) {
+    const { assignments, workers } = await this.reference();
+    const ids = new Set();
+    for (const a of assignments) {
+      if (a.deleted || a.chantierId !== chantierId) continue;
+      if (date < a.startDate) continue;
+      if (a.endDate && date > a.endDate) continue;
+      ids.add(a.workerId);
+    }
+    return workers.filter((w) => ids.has(w.id));
   }
   async _postRef(url, key, payload) {
     if (!this.online) throw new Error("Connexion requise pour modifier le référentiel");

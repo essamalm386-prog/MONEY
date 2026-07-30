@@ -8,17 +8,25 @@ import express, { type Express, type Request, type Response } from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  assignedWorkerIds,
   buildTimeEntry,
+  buildWeekAssignment,
   byAgency,
   byChantier,
   byDate,
   byWorker,
+  costByAgency,
+  costByChantier,
+  costByWorker,
   monthlyDetail,
+  payrollByWorkerWeek,
+  replaceWorker,
+  totalCost,
   totals,
   weeklyByWorker,
   type TimeEntryInput,
 } from "../core/index.js";
-import type { Agency, Chantier, TimeEntry, Worker } from "../core/types.js";
+import type { Agency, Chantier, CostRate, TimeEntry, Worker } from "../core/types.js";
 import type { Repository } from "./repository.js";
 import { newId, nowISO } from "./ids.js";
 
@@ -60,9 +68,87 @@ export function createApp(repo: Repository): Express {
     if (!req.body.firstName || !req.body.lastName || !req.body.type) {
       return res.status(400).json({ error: "firstName, lastName et type requis" });
     }
-    const w: Worker = { id: req.body.id || newId("wk"), active: true, ...req.body };
+    // `costs` optionnel : grille de coûts par chantier fournie à la création.
+    const { costs, ...workerBody } = req.body as Worker & { costs?: CostRate[] };
+    const w: Worker = {
+      ...workerBody,
+      id: workerBody.id || newId("wk"),
+      active: workerBody.active ?? true,
+    };
     repo.upsertWorker(w);
+    if (Array.isArray(costs)) {
+      for (const c of costs) repo.upsertCost({ ...c, workerId: w.id });
+    }
     res.status(201).json(w);
+  });
+
+  // --- Grille de coûts (personne × chantier) ---
+  api.get("/costs", (_req, res) => res.json(repo.listCosts()));
+  api.post("/costs", (req, res) => {
+    const { workerId, chantierId } = req.body;
+    if (!workerId || !chantierId) {
+      return res.status(400).json({ error: "workerId et chantierId requis" });
+    }
+    repo.upsertCost(req.body as CostRate);
+    res.status(201).json(req.body);
+  });
+
+  // --- Affectations (planning des équipes) ---
+  api.get("/assignments", (req, res) => {
+    res.json(
+      repo.listAssignments({
+        chantierId: req.query.chantierId as string | undefined,
+        from: req.query.from as string | undefined,
+        to: req.query.to as string | undefined,
+      }),
+    );
+  });
+
+  // Roster : personnes affectées à un chantier pour une date donnée (vue chef).
+  api.get("/roster", (req, res) => {
+    const chantierId = req.query.chantierId as string | undefined;
+    const date = req.query.date as string | undefined;
+    if (!chantierId || !date) return res.status(400).json({ error: "chantierId et date requis" });
+    try {
+      const ids = assignedWorkerIds(repo.listAssignments({ chantierId }), chantierId, date);
+      const workers = repo.listWorkers().filter((w) => ids.includes(w.id));
+      res.json(workers);
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+
+  api.post("/assignments", (req, res) => {
+    const { workerId, chantierId, anyDate, assignedBy } = req.body;
+    if (!workerId || !chantierId || !anyDate || !assignedBy) {
+      return res.status(400).json({ error: "workerId, chantierId, anyDate, assignedBy requis" });
+    }
+    try {
+      const a = buildWeekAssignment(req.body, { id: newId("as"), now: nowISO() });
+      repo.upsertAssignment(a);
+      res.status(201).json(a);
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+
+  // Remplacement d'une personne en cours de semaine.
+  api.post("/assignments/:id/replace", (req, res) => {
+    const original = repo.getAssignment(req.params.id);
+    if (!original) return res.status(404).json({ error: "affectation introuvable" });
+    const { newWorkerId, fromDate, assignedBy, note } = req.body;
+    if (!newWorkerId || !fromDate || !assignedBy) {
+      return res.status(400).json({ error: "newWorkerId, fromDate, assignedBy requis" });
+    }
+    const { ended, replacement } = replaceWorker(original, newWorkerId, fromDate, {
+      id: newId("as"),
+      now: nowISO(),
+      assignedBy,
+      note,
+    });
+    repo.upsertAssignment(ended);
+    repo.upsertAssignment(replacement);
+    res.status(201).json({ ended, replacement });
   });
 
   // --- Pointages ---
@@ -135,14 +221,24 @@ export function createApp(repo: Repository): Express {
       chantierId: req.query.chantierId as string | undefined,
       workerId: req.query.workerId as string | undefined,
     });
+    const workers = repo.listWorkers();
+    const costs = repo.listCosts();
     res.json({
       totals: totals(entries),
       byWorker: mapToObject(byWorker(entries)),
       byChantier: mapToObject(byChantier(entries)),
       byDate: mapToObject(byDate(entries)),
-      byAgency: mapToObject(byAgency(entries, repo.listWorkers())),
+      byAgency: mapToObject(byAgency(entries, workers)),
       weeklyByWorker: weeklyByWorker(entries),
       monthlyDetail: monthlyDetail(entries),
+      // Coûts (vue admin)
+      cost: {
+        total: totalCost(entries, workers, costs),
+        byWorker: mapToObject(costByWorker(entries, workers, costs)),
+        byChantier: mapToObject(costByChantier(entries, workers, costs)),
+        byAgency: mapToObject(costByAgency(entries, workers, costs)),
+      },
+      payroll: payrollByWorkerWeek(entries, workers, costs),
     });
   });
 
