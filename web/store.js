@@ -313,6 +313,14 @@ export class Store {
   async replaceAssignment(assignmentId, payload) {
     return this._postRef(`/api/assignments/${assignmentId}/replace`, "assignments", payload);
   }
+  /** Désigne (ou retire) le chef de chantier sur une affectation. */
+  async setChef(assignmentId, isChef = true) {
+    return this._sendRef("PUT", `/api/assignments/${assignmentId}/chef`, { isChef });
+  }
+  /** Retire une personne du planning. */
+  async removeAssignment(assignmentId) {
+    return this._sendRef("DELETE", `/api/assignments/${assignmentId}`);
+  }
   /** Roster : personnes affectées à un chantier une date donnée. */
   async roster(chantierId, date) {
     const { assignments, workers } = await this.reference();
@@ -325,6 +333,22 @@ export class Store {
     }
     return workers.filter((w) => ids.has(w.id));
   }
+  /** Requête d'écriture sur le référentiel (PUT/DELETE) puis rafraîchissement. */
+  async _sendRef(method, url, payload) {
+    if (!this.online) throw new Error("Connexion requise pour modifier le planning");
+    const res = await this.authFetch(url, {
+      method,
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const msg = await res.json().catch(() => ({}));
+      throw new Error(msg.error || "Erreur serveur");
+    }
+    await this.refreshReference();
+    this._emit();
+    return res.status === 204 ? null : res.json();
+  }
+
   async _postRef(url, key, payload) {
     if (!this.online) throw new Error("Connexion requise pour modifier le référentiel");
     const res = await this.authFetch(url, {

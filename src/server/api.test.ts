@@ -151,6 +151,86 @@ describe("API affectations & remplacement", () => {
     expect(a.startDate).toBe("2026-08-03");
     expect(a.endDate).toBe("2026-08-09");
   });
+
+  it("refuse une personne sur deux chantiers les mêmes jours (409)", async () => {
+    // wk_nguyen vient d'être affecté à ch_villeurb du 03 au 09/08.
+    const res = await post("/api/assignments", {
+      workerId: "wk_nguyen",
+      chantierId: "ch_lyon",
+      anyDate: "2026-08-06",
+      assignedBy: "conducteur1",
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as any;
+    expect(body.error).toMatch(/déjà affecté/i);
+    expect(body.conflict.chantierId).toBe("ch_villeurb");
+
+    // La semaine suivante reste possible : les périodes ne se chevauchent pas.
+    const ok = await post("/api/assignments", {
+      workerId: "wk_nguyen",
+      chantierId: "ch_lyon",
+      anyDate: "2026-08-12",
+      assignedBy: "conducteur1",
+    });
+    expect(ok.status).toBe(201);
+  });
+
+  it("désigne un chef de chantier, unique pour la période", async () => {
+    const mk = async (workerId: string, isChef: boolean) => {
+      const r = await post("/api/assignments", {
+        workerId,
+        chantierId: "ch_villeurb",
+        anyDate: "2026-10-07",
+        assignedBy: "conducteur1",
+        isChef,
+      });
+      expect(r.status).toBe(201);
+      return (await r.json()) as any;
+    };
+    const first = await mk("wk_nguyen", true);
+    expect(first.isChef).toBe(true);
+    const second = await mk("wk_koffi", true);
+
+    const list = await get("/api/assignments?from=2026-10-05&to=2026-10-11");
+    const chefs = list.filter((a: any) => a.chantierId === "ch_villeurb" && a.isChef);
+    expect(chefs.map((a: any) => a.id)).toEqual([second.id]);
+
+    // On peut transférer l'encadrement à une autre affectation.
+    const put = await fetch(base + `/api/assignments/${first.id}/chef`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ isChef: true }),
+    });
+    expect(put.status).toBe(200);
+    const after = await get("/api/assignments?from=2026-10-05&to=2026-10-11");
+    const chefs2 = after.filter((a: any) => a.chantierId === "ch_villeurb" && a.isChef);
+    expect(chefs2.map((a: any) => a.id)).toEqual([first.id]);
+  });
+
+  it("retire une personne du planning", async () => {
+    const created = await post("/api/assignments", {
+      workerId: "wk_nguyen",
+      chantierId: "ch_villeurb",
+      anyDate: "2026-11-04",
+      assignedBy: "conducteur1",
+    });
+    const a = (await created.json()) as any;
+    const del = await fetch(base + `/api/assignments/${a.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(del.status).toBe(204);
+    const list = await get("/api/assignments?from=2026-11-02&to=2026-11-08");
+    expect(list.find((x: any) => x.id === a.id)).toBeUndefined();
+    // La place est libérée : on peut réaffecter ailleurs la même semaine.
+    const again = await post("/api/assignments", {
+      workerId: "wk_nguyen",
+      chantierId: "ch_lyon",
+      anyDate: "2026-11-04",
+      assignedBy: "conducteur1",
+    });
+    expect(again.status).toBe(201);
+  });
 });
 
 describe("API coûts", () => {

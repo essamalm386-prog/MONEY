@@ -3,8 +3,10 @@ import {
   assignedWorkerIds,
   assignmentsForDate,
   buildWeekAssignment,
+  chefAssignment,
   coversDate,
   endAssignment,
+  findConflict,
   overlaps,
   replaceWorker,
 } from "./assignments.js";
@@ -100,6 +102,65 @@ describe("remplacement en cours de semaine", () => {
     const all = [ended, replacement];
     expect(assignedWorkerIds(all, "c1", "2026-07-29")).toEqual(["interim_A"]);
     expect(assignedWorkerIds(all, "c1", "2026-07-30")).toEqual(["interim_B"]);
+  });
+});
+
+describe("findConflict — une personne, un seul chantier à la fois", () => {
+  const existing = [asg({ id: "a1", workerId: "w1", chantierId: "c1" })]; // 27/07 → 02/08
+
+  it("refuse la même personne sur un autre chantier les mêmes jours", () => {
+    const c = findConflict(existing, "w1", "c2", "2026-07-29", "2026-08-04");
+    expect(c?.id).toBe("a1");
+  });
+
+  it("accepte sur des semaines disjointes", () => {
+    expect(findConflict(existing, "w1", "c2", "2026-08-03", "2026-08-09")).toBeUndefined();
+  });
+
+  it("accepte le même chantier (prolongation)", () => {
+    expect(findConflict(existing, "w1", "c1", "2026-07-27", "2026-08-02")).toBeUndefined();
+  });
+
+  it("ignore l'affectation en cours de modification et les supprimées", () => {
+    expect(findConflict(existing, "w1", "c2", "2026-07-29", "2026-08-04", "a1")).toBeUndefined();
+    const removed = [asg({ id: "a1", chantierId: "c1", deleted: true })];
+    expect(findConflict(removed, "w1", "c2", "2026-07-29", "2026-08-04")).toBeUndefined();
+  });
+
+  it("une affectation sans fin bloque tout le futur", () => {
+    const openEnded = [asg({ id: "a9", workerId: "w1", chantierId: "c1", endDate: undefined })];
+    expect(findConflict(openEnded, "w1", "c2", "2027-03-01", "2027-03-07")?.id).toBe("a9");
+  });
+});
+
+describe("chef de chantier désigné", () => {
+  it("buildWeekAssignment porte le rôle de chef", () => {
+    const a = buildWeekAssignment(
+      { workerId: "w1", chantierId: "c1", anyDate: "2026-07-30", assignedBy: "cond1", isChef: true },
+      { id: "a1", now: "2026-07-24T10:00:00Z" },
+    );
+    expect(a.isChef).toBe(true);
+  });
+
+  it("chefAssignment retrouve le chef du chantier à une date", () => {
+    const data = [
+      asg({ id: "a1", workerId: "w1", chantierId: "c1" }),
+      asg({ id: "a2", workerId: "w2", chantierId: "c1", isChef: true }),
+      asg({ id: "a3", workerId: "w3", chantierId: "c2", isChef: true }),
+    ];
+    expect(chefAssignment(data, "c1", "2026-07-30")?.workerId).toBe("w2");
+    expect(chefAssignment(data, "c2", "2026-07-30")?.workerId).toBe("w3");
+    expect(chefAssignment(data, "c1", "2026-09-01")).toBeUndefined();
+  });
+
+  it("le remplaçant d'un chef reprend l'encadrement", () => {
+    const original = asg({ id: "a1", workerId: "chef_A", isChef: true });
+    const { replacement } = replaceWorker(original, "chef_B", "2026-07-30", {
+      id: "a2",
+      now: "2026-07-29T18:00:00Z",
+      assignedBy: "cond1",
+    });
+    expect(replacement.isChef).toBe(true);
   });
 });
 

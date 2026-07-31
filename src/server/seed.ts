@@ -74,7 +74,9 @@ export function seed(repo: Repository): void {
   const cond = "conducteur1";
   const week1 = "2026-07-30";
   const asgList = [
-    { workerId: "wk_dupont", chantierId: "ch_lyon" },
+    // Dupont est le chef de chantier désigné de Lyon (il est lui-même salarié
+    // affecté au chantier — c'est son compte « chef » qui pointe l'équipe).
+    { workerId: "wk_dupont", chantierId: "ch_lyon", isChef: true },
     { workerId: "wk_silva", chantierId: "ch_lyon" },
     { workerId: "wk_moreau", chantierId: "ch_lyon" },
   ];
@@ -87,7 +89,7 @@ export function seed(repo: Repository): void {
   }
   // Remplacement en cours de semaine : Koffi (arrêt maladie) remplacé par Petit dès le jeudi.
   const koffiAsg = buildWeekAssignment(
-    { workerId: "wk_koffi", chantierId: "ch_villeurb", anyDate: week1, assignedBy: cond },
+    { workerId: "wk_koffi", chantierId: "ch_villeurb", anyDate: week1, assignedBy: cond, isChef: true },
     { id: "asg_koffi", now: nowISO() },
   );
   const { ended, replacement } = replaceWorker(koffiAsg, "wk_petit", "2026-07-30", {

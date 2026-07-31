@@ -925,6 +925,40 @@ tr.total td { font-weight: 800; border-top: 2px solid var(--line-2); }
   .filterbar .hint { margin: 0; margin-left: auto; }
 }
 
+/* ---------- Planning des équipes (multi-chantiers) ---------- */
+.rowbtns { display: flex; align-items: center; gap: 8px; flex: none; }
+.rowbtns .btn.sm { padding: 8px 11px; }
+.rowbtns .btn.ghost.danger {
+  background: var(--card);
+  color: var(--danger);
+  border-color: #f6cccc;
+  box-shadow: none;
+  font-weight: 800;
+}
+.rowbtns .btn.ghost.danger:hover:not(:disabled) { background: #fff5f5; }
+.warnline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--warn-bg);
+  color: #915600;
+  font-size: 13px;
+  font-weight: 700;
+}
+.warnline .ic { width: 17px; height: 17px; flex: none; }
+.planbar .label { font-weight: 800; letter-spacing: -0.02em; }
+.planbar .sub { font-size: 12.5px; color: var(--muted); }
+.free-list .person:first-child { padding-top: 0; }
+@media (min-width: 1024px) {
+  .planbar { gap: 12px; }
+  .planbar > div:first-child { margin-right: auto; }
+  .free-list { columns: 2; column-gap: 26px; }
+  .free-list .person { break-inside: avoid; }
+}
+
 /* ---------- Tableau de pointage éditable (bureau uniquement) ---------- */
 .grid-table { display: none; }
 @media (min-width: 1024px) {

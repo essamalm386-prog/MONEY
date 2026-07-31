@@ -6,10 +6,22 @@ L'application **fonctionne en local et en ligne** : saisie possible **hors-ligne
 
 ## Fonctionnalités
 
-- **Planning des équipes** : le conducteur de travaux / gérant **affecte** chaque
-  semaine les personnes aux chantiers. Les chefs de chantier ne pointent que le
-  **personnel affecté**. Gestion des **remplacements en cours de semaine**
-  (un intérimaire quitte le chantier, un autre le remplace à partir d'un jour donné).
+- **Planning des équipes — tous les chantiers sur une seule page** : le
+  conducteur de travaux / gérant voit **l'ensemble des chantiers** de la semaine,
+  compose chaque équipe et **désigne le chef de chantier** (un seul par chantier
+  et par période, choisi parmi les personnes affectées). Les chefs de chantier ne
+  pointent que le **personnel affecté**.
+  - Le planning s'ouvre par défaut sur la **semaine à venir** : dès le **jeudi**,
+    c'est la semaine prochaine qui s'affiche (usage courant : on prépare le
+    planning le jeudi ou le vendredi). Navigation semaine par semaine.
+  - **Une personne ne peut pas être sur deux chantiers les mêmes jours** : le
+    personnel déjà affecté ailleurs apparaît verrouillé (avec le nom du chantier
+    concerné) et le serveur refuse toute affectation qui se chevauche.
+  - Un bloc **« Personnel non affecté »** liste ceux qui n'ont pas encore de
+    chantier pour la semaine affichée.
+  - **Remplacements en cours de semaine** (un intérimaire quitte le chantier, un
+    autre le remplace à partir d'un jour donné) ; si la personne remplacée
+    encadrait l'équipe, son remplaçant **reprend le rôle de chef**.
 - **Saisie quotidienne par chantier** : pour chaque personne de l'équipe, pointer
   - le **travail**, au choix : **heure d'arrivée / heure d'arrêt** (+ pause) ou
     directement le **total d'heures effectuées** dans la journée,

@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   endDate          TEXT,
   assignedBy       TEXT NOT NULL,
   replacesWorkerId TEXT,
+  isChef           INTEGER NOT NULL DEFAULT 0,
   status           TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','ENDED')),
   note             TEXT,
   createdAt        TEXT NOT NULL,
@@ -134,6 +135,12 @@ function migrate(db: DB): void {
   const cols = db.prepare("PRAGMA table_info(workers)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "category")) {
     db.exec("ALTER TABLE workers ADD COLUMN category TEXT");
+  }
+
+  // Désignation du chef de chantier sur une affectation.
+  const asgCols = db.prepare("PRAGMA table_info(assignments)").all() as Array<{ name: string }>;
+  if (asgCols.length && !asgCols.some((c) => c.name === "isChef")) {
+    db.exec("ALTER TABLE assignments ADD COLUMN isChef INTEGER NOT NULL DEFAULT 0");
   }
 
   // Lien compte utilisateur → salarié (chef de chantier membre de l'équipe).

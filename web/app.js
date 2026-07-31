@@ -46,7 +46,7 @@ const state = {
   date: today(),
   chantierId: "",
   period: "semaine",
-  planWeek: today(),
+  planWeek: defaultPlanWeek(),
   showAll: false,
   showAllCh: false,
   ref: { chantiers: [], workers: [], agencies: [], assignments: [], costs: [] },
@@ -1058,101 +1058,222 @@ function openSitePicker() {
 /*  ÉCRAN 3 — ÉQUIPE (affectations & remplacements)                      */
 /* ===================================================================== */
 
+/**
+ * Semaine affichée par défaut dans le planning : à partir du **jeudi**, on
+ * prépare la **semaine suivante** (usage entreprise : le planning de la semaine
+ * prochaine se fait le jeudi ou le vendredi).
+ */
+function defaultPlanWeek() {
+  const d = today();
+  const wd = new Date(d + "T00:00:00Z").getUTCDay();
+  const iso = wd === 0 ? 7 : wd; // lundi = 1 … dimanche = 7
+  return iso >= 4 ? shiftDate(d, 7) : d;
+}
+
+/** Libellé « Semaine en cours / prochaine / S## » pour la semaine affichée. */
+function planWeekTag(from) {
+  const cur = weekBounds(today()).from;
+  if (from === cur) return "Semaine en cours";
+  if (from === shiftDate(cur, 7)) return "Semaine prochaine";
+  if (from === shiftDate(cur, -7)) return "Semaine passée";
+  return from < cur ? "Semaine passée" : "Semaine à venir";
+}
+
 function renderEquipe() {
   const { chantiers, assignments, workers } = state.ref;
-  if (!state.chantierId && chantiers[0]) state.chantierId = chantiers[0].id;
   const { from, to } = weekBounds(state.planWeek);
   const offline = !store.online;
+  const manage = store.canManage;
+  const weekNo = isoWeekKey(state.planWeek).replace(/^\d+-W/, "S");
 
+  // Affectations de la semaine — **tous chantiers confondus** (vue globale du
+  // conducteur / de l'administrateur). Le chef ne reçoit du serveur que les
+  // chantiers de son périmètre : la même vue lui montre donc les siens.
   const weekAsg = assignments.filter(
-    (a) => !a.deleted && a.chantierId === state.chantierId && a.startDate <= to && (!a.endDate || a.endDate >= from),
+    (a) => !a.deleted && a.startDate <= to && (!a.endDate || a.endDate >= from),
   );
-  const activeIds = new Set(weekAsg.filter((a) => a.status === "ACTIVE").map((a) => a.workerId));
-  const available = workers.filter((w) => w.active && !activeIds.has(w.id));
+  // Une personne ne peut pas être sur deux chantiers les mêmes jours :
+  // on indexe qui est déjà pris, et où.
+  // Y compris les affectations clôturées : leurs jours restent occupés (c'est
+  // exactement le contrôle appliqué par le serveur, qui refuserait la saisie).
+  const busy = new Map();
+  for (const a of weekAsg) busy.set(a.workerId, a.chantierId);
+  for (const a of weekAsg) if (a.status === "ACTIVE") busy.set(a.workerId, a.chantierId);
 
-  view().innerHTML = `
-    ${siteCardHtml(
-      "Planning du chantier",
-      chantierName(state.chantierId),
-      `${isoWeekKey(state.planWeek).replace(/^\d+-W/, "Semaine ")} · ${fmtDayMonth(from)} → ${fmtDayMonth(to)}`,
-    )}
+  const sites = chantiers.filter((c) => c.active);
+  const free = workers.filter((w) => w.active && !busy.has(w.id));
 
-    <div class="card tight wide filterbar">
-      <label class="f" style="margin-top:0">Semaine (choisir un jour)</label>
-      <input type="date" id="pl-week" value="${state.planWeek}" />
-      <p class="hint">Le conducteur de travaux compose l'équipe pour la semaine. Les chefs ne pointent que le personnel affecté.</p>
-    </div>
+  const siteBlock = (c) => {
+    const rows = weekAsg
+      .filter((a) => a.chantierId === c.id)
+      .sort((a, b) => (Number(b.isChef) - Number(a.isChef)) || a.startDate.localeCompare(b.startDate));
+    const actives = rows.filter((a) => a.status === "ACTIVE");
+    const chef = actives.find((a) => a.isChef);
+    const options = workers
+      .filter((w) => w.active)
+      .map((w) => {
+        const at = busy.get(w.id);
+        const taken = at !== undefined;
+        const label = `${w.lastName} ${w.firstName} — ${TYPE_LABEL[w.type]}${w.trade ? " · " + w.trade : ""}`;
+        return `<option value="${w.id}"${taken ? " disabled" : ""}>${esc(label)}${
+          taken ? ` (déjà sur ${esc(chantierName(at))})` : ""
+        }</option>`;
+      })
+      .join("");
 
-    <div class="card wide">
+    return `<div class="card" data-site-card="${c.id}">
       <div class="card-head">
-        <div><h2>Équipe affectée</h2><div class="sub">${activeIds.size} active(s) · ${weekAsg.length} ligne(s)</div></div>
+        <div>
+          <h2>${esc(c.name)}</h2>
+          <div class="sub">${esc(c.code)} · ${actives.length} personne${actives.length > 1 ? "s" : ""}
+            ${chef ? `· chef : ${esc(workerName(chef.workerId))}` : ""}</div>
+        </div>
       </div>
+      ${!chef && actives.length ? `<div class="warnline">${I.alert} Aucun chef de chantier désigné</div>` : ""}
       ${
-        weekAsg.length === 0
+        rows.length === 0
           ? `<div class="empty">Aucune affectation cette semaine.</div>`
-          : weekAsg
-              .slice()
-              .sort((a, b) => a.startDate.localeCompare(b.startDate))
+          : rows
               .map((a) => {
                 const w = workerById(a.workerId);
                 const ended = a.status === "ENDED";
                 return `<div class="person">
                   ${w ? avatarFor(w) : ""}
                   <div class="who">
-                    <div class="n"><span class="txt">${esc(w ? w.firstName + " " + w.lastName : a.workerId)}</span></div>
+                    <div class="n"><span class="txt">${esc(w ? w.firstName + " " + w.lastName : a.workerId)}</span>
+                      ${a.isChef ? `<span class="chip ${ended ? "neutral" : "TRAVAIL"}">chef</span>` : ""}</div>
                     <div class="t">
                       ${fmtDayMonth(a.startDate)} → ${a.endDate ? fmtDayMonth(a.endDate) : "…"}
                       ${a.replacesWorkerId ? `<span class="chip INTEMPERIE">remplaçant</span>` : ""}
                       ${ended ? `<span class="chip neutral">clôturée</span>` : ""}
                     </div>
                   </div>
-                  ${!ended && store.canManage ? `<button class="btn ghost sm" data-rep="${a.id}" ${offline ? "disabled" : ""}>Remplacer</button>` : ""}
+                  ${
+                    !ended && manage
+                      ? `<div class="rowbtns">
+                           ${a.isChef ? "" : `<button class="btn ghost sm" data-chef="${a.id}" ${offline ? "disabled" : ""} title="Désigner comme chef de chantier">${I.helmet} Chef</button>`}
+                           <button class="btn ghost sm" data-rep="${a.id}" ${offline ? "disabled" : ""}>Remplacer</button>
+                           <button class="btn ghost sm danger" data-del="${a.id}" ${offline ? "disabled" : ""} title="Retirer du planning">✕</button>
+                         </div>`
+                      : ""
+                  }
                 </div>`;
               })
               .join("")
       }
+      ${
+        manage
+          ? `<label class="f">Affecter une personne</label>
+             <select data-pick="${c.id}">${options}</select>
+             <div class="rowbtns" style="margin-top:10px">
+               <button class="btn" data-add="${c.id}" ${offline ? "disabled" : ""}>${I.plus} Affecter</button>
+               <button class="btn ghost" data-addchef="${c.id}" ${offline ? "disabled" : ""}>${I.helmet} Affecter comme chef</button>
+             </div>`
+          : ""
+      }
+    </div>`;
+  };
+
+  view().innerHTML = `
+    <div class="card tight wide filterbar planbar">
+      <div>
+        <div class="label">Planning — ${weekNo}</div>
+        <div class="sub">${fmtDayMonth(from)} → ${fmtDayMonth(to)} · ${planWeekTag(from)}</div>
+      </div>
+      <button class="btn ghost sm" id="pl-prev">◀ Précédente</button>
+      <input type="date" id="pl-week" value="${state.planWeek}" />
+      <button class="btn ghost sm" id="pl-next">Suivante ▶</button>
+      <button class="btn ghost sm" id="pl-next-week">Semaine prochaine</button>
     </div>
 
     ${
-      !store.canManage
-        ? `<div class="card"><p class="muted" style="margin:0">Le planning est géré par le conducteur de travaux ou l'administrateur. Vous pointez le personnel affecté ci-dessus.</p></div>`
-        : `<div class="card">
-      <div class="card-head"><h2>Affecter une personne</h2></div>
-      ${
-        available.length === 0
-          ? `<div class="empty">Tout le personnel disponible est déjà affecté.</div>`
-          : `<label class="f" style="margin-top:0">Personne</label>
-             <select id="pl-worker">${available
-               .map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)} — ${TYPE_LABEL[w.type]}${w.trade ? " · " + esc(w.trade) : ""}</option>`)
-               .join("")}</select>
-             <button class="btn block" id="pl-add" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Affecter pour la semaine</button>
-             ${offline ? `<p class="hint">Le planning nécessite une connexion.</p>` : ""}`
-      }
-    </div>`
+      manage
+        ? `<div class="card tight wide">
+             <p class="hint" style="margin:0">Le planning des semaines à venir se prépare le jeudi ou le vendredi.
+             Une personne ne peut être affectée qu'à <strong>un seul chantier</strong> sur des jours donnés,
+             et chaque chantier a <strong>un chef de chantier désigné</strong> parmi son équipe.</p>
+           </div>`
+        : `<div class="card tight wide"><p class="muted" style="margin:0">Le planning est géré par le conducteur de travaux ou l'administrateur. Vous pointez le personnel affecté ci-dessous.</p></div>`
+    }
+
+    ${
+      sites.length === 0
+        ? `<div class="card"><div class="empty">Aucun chantier actif.</div></div>`
+        : sites.map(siteBlock).join("")
+    }
+
+    ${
+      manage
+        ? `<div class="card wide">
+             <div class="card-head"><div><h2>Personnel non affecté</h2>
+               <div class="sub">${free.length} personne${free.length > 1 ? "s" : ""} sans chantier ${weekNo}</div></div></div>
+             ${
+               free.length === 0
+                 ? `<div class="empty">Tout le personnel actif est affecté cette semaine.</div>`
+                 : `<div class="free-list">${free
+                     .map(
+                       (w) => `<div class="person">${avatarFor(w)}
+                         <div class="who"><div class="n"><span class="txt">${esc(w.firstName + " " + w.lastName)}</span></div>
+                         <div class="t">${TYPE_LABEL[w.type]}${w.trade ? " · " + esc(w.trade) : ""}</div></div></div>`,
+                     )
+                     .join("")}</div>`
+             }
+           </div>`
+        : ""
     }`;
 
-  el("pick-site").onclick = openSitePicker;
-  el("pl-week").onchange = (ev) => {
-    state.planWeek = ev.target.value || today();
+  const goWeek = (d) => {
+    state.planWeek = d;
     render();
   };
-  const add = el("pl-add");
-  if (add) {
-    add.onclick = async () => {
+  el("pl-prev").onclick = () => goWeek(shiftDate(state.planWeek, -7));
+  el("pl-next").onclick = () => goWeek(shiftDate(state.planWeek, 7));
+  el("pl-next-week").onclick = () => goWeek(shiftDate(weekBounds(today()).from, 7));
+  el("pl-week").onchange = (ev) => goWeek(ev.target.value || today());
+
+  const assign = async (chantierId, isChef) => {
+    const sel = view().querySelector(`[data-pick="${chantierId}"]`);
+    if (!sel || !sel.value) return toast("Aucune personne disponible", "err");
+    try {
+      await store.addAssignment({
+        workerId: sel.value,
+        chantierId,
+        anyDate: state.planWeek,
+        assignedBy: store.userName || "conducteur",
+        isChef: !!isChef,
+      });
+      await reload();
+      toast(isChef ? "Chef de chantier désigné" : "Personne affectée");
+    } catch (err) {
+      toast(err.message, "err");
+    }
+  };
+  view().querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => assign(b.dataset.add, false)));
+  view().querySelectorAll("[data-addchef]").forEach((b) => (b.onclick = () => assign(b.dataset.addchef, true)));
+  view().querySelectorAll("[data-chef]").forEach((b) => {
+    b.onclick = async () => {
       try {
-        await store.addAssignment({
-          workerId: el("pl-worker").value,
-          chantierId: state.chantierId,
-          anyDate: state.planWeek,
-          assignedBy: store.userName || "conducteur",
-        });
+        await store.setChef(b.dataset.chef, true);
         await reload();
-        toast("Personne affectée");
+        toast("Chef de chantier désigné");
       } catch (err) {
         toast(err.message, "err");
       }
     };
-  }
+  });
+  view().querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = async () => {
+      const a = weekAsg.find((x) => x.id === b.dataset.del);
+      if (!confirm(`Retirer ${workerName(a?.workerId)} du planning de ce chantier ?`)) return;
+      try {
+        await store.removeAssignment(b.dataset.del);
+        await reload();
+        toast("Affectation retirée");
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    };
+  });
   view().querySelectorAll("[data-rep]").forEach((b) => {
     b.onclick = () => openReplaceSheet(b.dataset.rep, weekAsg);
   });
@@ -1163,6 +1284,14 @@ function openReplaceSheet(assignmentId, weekAsg) {
   if (!asg) return;
   const leaving = workerById(asg.workerId);
   const candidates = state.ref.workers.filter((w) => w.active && w.id !== asg.workerId);
+  // Qui est déjà pris ailleurs sur la période de l'affectation remplacée ?
+  const busy = new Map();
+  for (const a of state.ref.assignments) {
+    if (a.deleted || a.status !== "ACTIVE" || a.chantierId === asg.chantierId) continue;
+    if (a.startDate > (asg.endDate ?? "9999-12-31")) continue;
+    if (a.endDate && a.endDate < asg.startDate) continue;
+    busy.set(a.workerId, a.chantierId);
+  }
 
   const ov = document.createElement("div");
   ov.className = "overlay";
@@ -1170,10 +1299,13 @@ function openReplaceSheet(assignmentId, weekAsg) {
     <div class="sheet">
       <div class="grab"></div>
       <h3>Remplacer ${esc(leaving ? leaving.firstName + " " + leaving.lastName : "")}</h3>
-      <div class="sheet-sub">Affectation du ${fmtDayMonth(asg.startDate)} au ${asg.endDate ? fmtDayMonth(asg.endDate) : "…"}</div>
+      <div class="sheet-sub">${esc(chantierName(asg.chantierId))} · du ${fmtDayMonth(asg.startDate)} au ${asg.endDate ? fmtDayMonth(asg.endDate) : "…"}${asg.isChef ? " · chef de chantier" : ""}</div>
       <label class="f">Remplaçant</label>
       <select id="rep-worker">${candidates
-        .map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)} — ${TYPE_LABEL[w.type]}${w.trade ? " · " + esc(w.trade) : ""}</option>`)
+        .map((w) => {
+          const at = busy.get(w.id);
+          return `<option value="${w.id}"${at ? " disabled" : ""}>${esc(w.lastName)} ${esc(w.firstName)} — ${TYPE_LABEL[w.type]}${w.trade ? " · " + esc(w.trade) : ""}${at ? ` (déjà sur ${esc(chantierName(at))})` : ""}</option>`;
+        })
         .join("")}</select>
       <label class="f">À partir du</label>
       <input type="date" id="rep-date" value="${state.date}" min="${asg.startDate}" ${asg.endDate ? `max="${asg.endDate}"` : ""} />

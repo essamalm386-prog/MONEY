@@ -62,6 +62,7 @@ function rowToAssignment(r: any): Assignment {
     endDate: r.endDate ?? undefined,
     assignedBy: r.assignedBy,
     replacesWorkerId: r.replacesWorkerId ?? undefined,
+    isChef: bool(r.isChef),
     status: r.status,
     note: r.note ?? undefined,
     createdAt: r.createdAt,
@@ -303,17 +304,18 @@ export class Repository {
     this.db
       .prepare(
         `INSERT INTO assignments(id,workerId,chantierId,startDate,endDate,assignedBy,
-            replacesWorkerId,status,note,createdAt,updatedAt,version,sync,deleted)
+            replacesWorkerId,isChef,status,note,createdAt,updatedAt,version,sync,deleted)
          VALUES(@id,@workerId,@chantierId,@startDate,@endDate,@assignedBy,
-            @replacesWorkerId,@status,@note,@createdAt,@updatedAt,@version,@sync,@deleted)
+            @replacesWorkerId,@isChef,@status,@note,@createdAt,@updatedAt,@version,@sync,@deleted)
          ON CONFLICT(id) DO UPDATE SET workerId=@workerId,chantierId=@chantierId,startDate=@startDate,
-            endDate=@endDate,assignedBy=@assignedBy,replacesWorkerId=@replacesWorkerId,status=@status,
-            note=@note,updatedAt=@updatedAt,version=@version,sync=@sync,deleted=@deleted`,
+            endDate=@endDate,assignedBy=@assignedBy,replacesWorkerId=@replacesWorkerId,isChef=@isChef,
+            status=@status,note=@note,updatedAt=@updatedAt,version=@version,sync=@sync,deleted=@deleted`,
       )
       .run({
         ...a,
         endDate: a.endDate ?? null,
         replacesWorkerId: a.replacesWorkerId ?? null,
+        isChef: int(a.isChef, 0),
         note: a.note ?? null,
         sync: "SYNCED",
         deleted: int(a.deleted, 0),
@@ -323,6 +325,38 @@ export class Repository {
     const r = this.db.prepare("SELECT * FROM assignments WHERE id = ?").get(id);
     return r ? rowToAssignment(r) : undefined;
   }
+  /** Un seul chef par chantier et par période : retire le rôle aux autres. */
+  clearChefFlag(chantierId: string, startDate: string, endDate: string | undefined, keepId: string): void {
+    this.db
+      .prepare(
+        `UPDATE assignments SET isChef = 0
+         WHERE chantierId = ? AND id <> ? AND deleted = 0 AND isChef = 1
+           AND startDate <= ? AND (endDate IS NULL OR endDate >= ?)`,
+      )
+      .run(chantierId, keepId, endDate ?? "9999-12-31", startDate);
+  }
+
+  /** Affectations d'une personne chevauchant la période (tous chantiers). */
+  assignmentsForWorker(workerId: string, from: string, to: string | undefined): Assignment[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM assignments
+         WHERE workerId = ? AND deleted = 0
+           AND startDate <= ? AND (endDate IS NULL OR endDate >= ?)
+         ORDER BY startDate`,
+      )
+      .all(workerId, to ?? "9999-12-31", from)
+      .map(rowToAssignment);
+  }
+
+  /** Retire une personne du planning (suppression logique). */
+  deleteAssignment(id: string, now: string): boolean {
+    const a = this.getAssignment(id);
+    if (!a) return false;
+    this.upsertAssignment({ ...a, deleted: true, updatedAt: now, version: a.version + 1 });
+    return true;
+  }
+
   listAssignments(filter: { chantierId?: string; from?: string; to?: string } = {}): Assignment[] {
     const clauses = ["deleted = 0"];
     const params: Record<string, unknown> = {};

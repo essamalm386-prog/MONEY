@@ -124,6 +124,11 @@ export interface Assignment {
   assignedBy: string; // conducteur de travaux / gérant
   /** Si cette affectation remplace une personne partie en cours de semaine. */
   replacesWorkerId?: string;
+  /**
+   * Cette personne est le **chef de chantier** désigné pour cette période.
+   * Un seul chef par chantier et par période.
+   */
+  isChef?: boolean;
   status: AssignmentStatus;
   note?: string;
   createdAt: string;

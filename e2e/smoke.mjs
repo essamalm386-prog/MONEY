@@ -87,6 +87,13 @@ async function main() {
         costs: [{ chantierId: "ch_e2e", mealAllowance: 10, travelAllowance: 8 }],
       }),
     });
+    // Second chantier (nommé pour rester après « Chantier E2E » dans l'ordre
+    // alphabétique) : sert à vérifier la vue planning multi-chantiers.
+    await fetch(BASE + "/api/chantiers", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ id: "ch_e2e2", code: "E2E-02", name: "Zone E2E Bis", client: "Interne" }),
+    });
     // Affectation de la personne au chantier pour la semaine (conducteur de travaux).
     await fetch(BASE + "/api/assignments", {
       method: "POST",
@@ -199,8 +206,56 @@ async function main() {
     );
     console.log("✓ Mode bureau : saisie clavier arrivée/arrêt/pause = 9h00");
 
+    // --- Planning : tous les chantiers, semaine à venir, chef, anti-doublon ---
+    await page.click('.tabbar button[data-tab="equipe"]');
+    await page.waitForSelector("[data-site-card]");
+    const siteCards = await page.locator("[data-site-card]").count();
+    assert(siteCards >= 2, `le planning doit lister tous les chantiers (vu: ${siteCards})`);
+    console.log(`✓ Planning : tous les chantiers visibles (${siteCards})`);
+
+    // Semaine affichée par défaut : à partir du jeudi, c'est la semaine suivante.
+    const isoDay = (() => {
+      const d = new Date().getUTCDay();
+      return d === 0 ? 7 : d;
+    })();
+    const expectedTag = isoDay >= 4 ? "Semaine prochaine" : "Semaine en cours";
+    const planSub = await page.locator(".planbar .sub").innerText();
+    assert(planSub.includes(expectedTag), `semaine par défaut = ${planSub}, attendu « ${expectedTag} »`);
+    console.log(`✓ Planning : ouverture sur la ${expectedTag.toLowerCase()}`);
+
+    // On se place sur la semaine de l'affectation de test.
+    await page.fill("#pl-week", "2026-07-30");
+    await page.waitForFunction(
+      () => document.querySelector('[data-site-card="ch_e2e"]')?.textContent.includes("Test Ouvrier"),
+      { timeout: 8000 },
+    );
+
+    // Anti-doublon : déjà affecté sur ch_e2e → verrouillé sur l'autre chantier.
+    const lockedOpt = page.locator('[data-pick="ch_e2e2"] option[value="wk_e2e"]');
+    assert(await lockedOpt.isDisabled(), "une personne affectée ailleurs doit être verrouillée");
+    const lockedLabel = await lockedOpt.innerText();
+    assert(lockedLabel.includes("déjà sur"), `libellé de verrouillage inattendu: ${lockedLabel}`);
+    console.log("✓ Planning : impossible d'affecter la même personne sur deux chantiers");
+
+    // Le serveur refuse aussi côté API (409), pas seulement l'UI.
+    const dup = await fetch(BASE + "/api/assignments", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ workerId: "wk_e2e", chantierId: "ch_e2e2", anyDate: "2026-07-30", assignedBy: "cond_e2e" }),
+    });
+    assert(dup.status === 409, `doublon d'affectation: statut ${dup.status}, attendu 409`);
+    console.log("✓ Planning : le serveur refuse le doublon (409)");
+
+    // Désignation du chef de chantier parmi l'équipe affectée.
+    await page.click('[data-site-card="ch_e2e"] [data-chef]');
+    await page.waitForFunction(
+      () => document.querySelector('[data-site-card="ch_e2e"]')?.textContent.includes("chef : Test Ouvrier"),
+      { timeout: 8000 },
+    );
+    console.log("✓ Planning : chef de chantier désigné");
+
     assert(errors.length === 0, `erreurs JS dans la page: ${errors.join(" | ")}`);
-    console.log("\n✅ E2E OK — parcours complet validé (mobile + bureau, UI → IndexedDB → API → SQLite → rapports)");
+    console.log("\n✅ E2E OK — parcours complet validé (mobile + bureau, UI → IndexedDB → API → SQLite → rapports + planning)");
   } finally {
     if (browser) await browser.close();
     server.kill("SIGTERM");

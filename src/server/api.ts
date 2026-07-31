@@ -18,6 +18,7 @@ import {
   costByAgency,
   costByChantier,
   costByWorker,
+  findConflict,
   isSalaried,
   monthlyDetail,
   monthlyStatements,
@@ -28,7 +29,7 @@ import {
   weeklyByWorker,
   type TimeEntryInput,
 } from "../core/index.js";
-import type { Agency, Chantier, CostRate, TimeEntry, Worker } from "../core/types.js";
+import type { Agency, Assignment, Chantier, CostRate, TimeEntry, Worker } from "../core/types.js";
 import type { Repository } from "./repository.js";
 import {
   hashPassword,
@@ -266,6 +267,19 @@ export function createApp(repo: Repository): Express {
     }
   });
 
+  /**
+   * Message d'erreur explicite quand une personne est déjà affectée ailleurs
+   * sur les mêmes jours (une personne = un seul chantier à la fois).
+   */
+  const conflictMessage = (c: Assignment): string => {
+    const w = repo.listWorkers().find((x) => x.id === c.workerId);
+    const ch = repo.listChantiers().find((x) => x.id === c.chantierId);
+    const who = w ? `${w.firstName} ${w.lastName}` : "Cette personne";
+    const where = ch ? `« ${ch.name} »` : "un autre chantier";
+    const period = c.endDate ? `du ${c.startDate} au ${c.endDate}` : `à partir du ${c.startDate}`;
+    return `${who} est déjà affecté(e) sur ${where} ${period}. Une personne ne peut pas être sur deux chantiers les mêmes jours.`;
+  };
+
   api.post("/assignments", requireRole("CONDUCTEUR"), (req, res) => {
     const { workerId, chantierId, anyDate, assignedBy } = req.body;
     if (!workerId || !chantierId || !anyDate || !assignedBy) {
@@ -273,11 +287,45 @@ export function createApp(repo: Repository): Express {
     }
     try {
       const a = buildWeekAssignment(req.body, { id: newId("as"), now: nowISO() });
+      const conflict = findConflict(
+        repo.assignmentsForWorker(a.workerId, a.startDate, a.endDate),
+        a.workerId,
+        a.chantierId,
+        a.startDate,
+        a.endDate,
+      );
+      if (conflict) return res.status(409).json({ error: conflictMessage(conflict), conflict });
       repo.upsertAssignment(a);
+      // Un seul chef de chantier par chantier et par période.
+      if (a.isChef) repo.clearChefFlag(a.chantierId, a.startDate, a.endDate, a.id);
       res.status(201).json(a);
     } catch (e) {
       res.status(400).json({ error: (e as Error).message });
     }
+  });
+
+  /** Désigne (ou retire) le chef de chantier sur une affectation existante. */
+  api.put("/assignments/:id/chef", requireRole("CONDUCTEUR"), (req, res) => {
+    const a = repo.getAssignment(String(req.params.id));
+    if (!a || a.deleted) return res.status(404).json({ error: "affectation introuvable" });
+    const isChef = req.body?.isChef !== false;
+    const updated: Assignment = {
+      ...a,
+      isChef,
+      updatedAt: nowISO(),
+      version: a.version + 1,
+    };
+    repo.upsertAssignment(updated);
+    if (isChef) repo.clearChefFlag(a.chantierId, a.startDate, a.endDate, a.id);
+    res.json(updated);
+  });
+
+  /** Retire une personne du planning. */
+  api.delete("/assignments/:id", requireRole("CONDUCTEUR"), (req, res) => {
+    if (!repo.deleteAssignment(String(req.params.id), nowISO())) {
+      return res.status(404).json({ error: "affectation introuvable" });
+    }
+    res.status(204).end();
   });
 
   // Remplacement d'une personne en cours de semaine.
@@ -294,6 +342,14 @@ export function createApp(repo: Repository): Express {
       assignedBy,
       note,
     });
+    const conflict = findConflict(
+      repo.assignmentsForWorker(replacement.workerId, replacement.startDate, replacement.endDate),
+      replacement.workerId,
+      replacement.chantierId,
+      replacement.startDate,
+      replacement.endDate,
+    );
+    if (conflict) return res.status(409).json({ error: conflictMessage(conflict), conflict });
     repo.upsertAssignment(ended);
     repo.upsertAssignment(replacement);
     res.status(201).json({ ended, replacement });

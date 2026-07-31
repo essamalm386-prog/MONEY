@@ -48,6 +48,7 @@ export function buildWeekAssignment(
     anyDate: string; // n'importe quel jour de la semaine visée
     assignedBy: string;
     replacesWorkerId?: string;
+    isChef?: boolean;
     note?: string;
   },
   ctx: { id: string; now: string },
@@ -62,6 +63,7 @@ export function buildWeekAssignment(
     endDate: sunday,
     assignedBy: input.assignedBy,
     replacesWorkerId: input.replacesWorkerId,
+    isChef: input.isChef ?? false,
     status: "ACTIVE",
     note: input.note,
     createdAt: ctx.now,
@@ -108,6 +110,8 @@ export function replaceWorker(
     endDate: original.endDate,
     assignedBy: ctx.assignedBy,
     replacesWorkerId: original.workerId,
+    // Si la personne remplacée encadrait l'équipe, son remplaçant reprend ce rôle.
+    isChef: original.isChef ?? false,
     status: "ACTIVE",
     note: ctx.note,
     createdAt: ctx.now,
@@ -129,4 +133,49 @@ export function overlaps(a: Assignment, b: Assignment): boolean {
   const aEnd = a.endDate ?? "9999-12-31";
   const bEnd = b.endDate ?? "9999-12-31";
   return a.startDate <= bEnd && b.startDate <= aEnd;
+}
+
+/** Deux périodes [aStart, aEnd] et [bStart, bEnd] se chevauchent-elles ? */
+function periodsOverlap(
+  aStart: string,
+  aEnd: string | undefined,
+  bStart: string,
+  bEnd: string | undefined,
+): boolean {
+  return aStart <= (bEnd ?? "9999-12-31") && bStart <= (aEnd ?? "9999-12-31");
+}
+
+/**
+ * Une personne ne peut pas être sur deux chantiers différents les mêmes jours.
+ * Renvoie l'affectation en conflit (sur un **autre** chantier) si elle existe.
+ * `excludeId` permet d'ignorer l'affectation en cours de modification.
+ */
+export function findConflict(
+  assignments: Assignment[],
+  workerId: string,
+  chantierId: string,
+  startDate: string,
+  endDate: string | undefined,
+  excludeId?: string,
+): Assignment | undefined {
+  return assignments.find(
+    (a) =>
+      !a.deleted &&
+      a.id !== excludeId &&
+      a.workerId === workerId &&
+      a.chantierId !== chantierId &&
+      periodsOverlap(startDate, endDate, a.startDate, a.endDate),
+  );
+}
+
+/**
+ * Chef de chantier désigné pour un chantier à une date donnée (le membre de
+ * l'équipe qui encadre). Renvoie l'affectation correspondante.
+ */
+export function chefAssignment(
+  assignments: Assignment[],
+  chantierId: string,
+  date: string,
+): Assignment | undefined {
+  return assignmentsForDate(assignments, chantierId, date).find((a) => a.isChef);
 }
