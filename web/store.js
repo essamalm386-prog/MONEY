@@ -101,6 +101,24 @@ export class Store {
   /** Connexion : enregistre l'URL du serveur puis ouvre une session. */
   async login(base, username, password) {
     this.setApiBase(base);
+
+    // Vérifie d'abord qu'on parle bien au serveur TDMI Pointage : un site
+    // statique (hébergement de fichiers, mauvaise URL, portail Wi-Fi…) peut
+    // répondre « 200 » avec du HTML et provoquer des erreurs incompréhensibles.
+    let health = null;
+    try {
+      const h = await fetch(this.api("/api/health"));
+      health = await h.json().catch(() => null);
+    } catch {
+      throw new Error("Serveur injoignable — vérifiez l'adresse du serveur");
+    }
+    if (!health || health.ok !== true) {
+      throw new Error(
+        "Cette adresse ne pointe pas vers le serveur TDMI Pointage. " +
+          "Saisissez l'adresse affichée au démarrage du serveur (ex. http://192.168.1.20:3000).",
+      );
+    }
+
     let res;
     try {
       res = await fetch(this.api("/api/auth/login"), {
@@ -113,6 +131,11 @@ export class Store {
     }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || "Connexion refusée");
+    if (!body.token || !body.user || !body.user.role) {
+      throw new Error(
+        "Réponse inattendue du serveur — sa version est peut-être trop ancienne, mettez-la à jour.",
+      );
+    }
     this.token = body.token;
     this.role = body.user.role;
     this.userName = body.user.displayName;
@@ -200,7 +223,10 @@ export class Store {
       try {
         const r = await this.authFetch(path);
         if (!r.ok) return null;
-        return await r.json();
+        const data = await r.json();
+        // On n'accepte que des listes : toute autre réponse (HTML, erreur…)
+        // est ignorée pour ne pas corrompre le cache hors-ligne.
+        return Array.isArray(data) ? data : null;
       } catch {
         return null;
       }

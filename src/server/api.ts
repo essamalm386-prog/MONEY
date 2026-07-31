@@ -54,6 +54,17 @@ export function createApp(repo: Repository): Express {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
 
+  // CORS : l'application Android (WebView Capacitor) et la version web ouverte
+  // depuis un autre poste appellent l'API depuis une autre origine. L'auth se
+  // fait par jeton Bearer (pas de cookie), donc « * » est sans risque.
+  app.use("/api", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "content-type, authorization");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    if (req.method === "OPTIONS") return res.status(204).end();
+    next();
+  });
+
   const api = express.Router();
 
   api.get("/health", (_req, res) => res.json({ ok: true, app: "TDMI Pointage", time: nowISO() }));
