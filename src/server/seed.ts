@@ -11,28 +11,6 @@ import { nowISO } from "./ids.js";
 const DB_PATH = process.env.DB_PATH ?? "data/pointage.db";
 
 export function seed(repo: Repository): void {
-  // Comptes de démonstration (identifiant = mot de passe) : admin, conducteur, chef.
-  if (repo.countUsers() === 0) {
-    const demoUsers: Array<{ u: string; n: string; r: Role }> = [
-      { u: "admin", n: "Direction TDMI", r: "ADMIN" },
-      { u: "conducteur", n: "Karim Benali", r: "CONDUCTEUR" },
-      { u: "chef", n: "Luc Dupont", r: "CHEF" },
-    ];
-    for (const d of demoUsers) {
-      const { salt, hash } = hashPassword(d.u);
-      repo.createUser({
-        id: `us_${d.u}`,
-        username: d.u,
-        displayName: d.n,
-        role: d.r,
-        passwordHash: hash,
-        salt,
-        active: true,
-        createdAt: nowISO(),
-      });
-    }
-  }
-
   repo.upsertAgency({ id: "ag_demo", name: "Intérim Bâtiment SudEst", contact: "04 90 00 00 00", active: true });
 
   repo.upsertChantier({
@@ -55,6 +33,31 @@ export function seed(repo: Repository): void {
     { id: "wk_nguyen", firstName: "Hugo", lastName: "Nguyen", type: "ALTERNANT" as const, category: "APPRENTI", trade: "Maçonnerie (alternance)", hourlyRate: 12, active: true },
   ];
   for (const w of workers) repo.upsertWorker(w);
+
+  // Comptes de démonstration (identifiant = mot de passe) : admin, conducteur, chef.
+  if (repo.countUsers() === 0) {
+    // Le chef de chantier est un salarié : son compte est rattaché à sa fiche
+    // personnel (wk_dupont), ce qui détermine les chantiers qu'il encadre.
+    const demoUsers: Array<{ u: string; n: string; r: Role; w?: string }> = [
+      { u: "admin", n: "Direction TDMI", r: "ADMIN" },
+      { u: "conducteur", n: "Karim Benali", r: "CONDUCTEUR", w: "wk_martin" },
+      { u: "chef", n: "Luc Dupont", r: "CHEF", w: "wk_dupont" },
+    ];
+    for (const d of demoUsers) {
+      const { salt, hash } = hashPassword(d.u);
+      repo.createUser({
+        id: `us_${d.u}`,
+        username: d.u,
+        displayName: d.n,
+        role: d.r,
+        passwordHash: hash,
+        salt,
+        active: true,
+        createdAt: nowISO(),
+        workerId: d.w,
+      });
+    }
+  }
 
   // Grille de coûts par chantier : panier repas + indemnité de déplacement
   // (le chantier de Villeurbanne, plus éloigné, ouvre une indemnité plus élevée).

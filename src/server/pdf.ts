@@ -12,6 +12,7 @@ import type {
   Agency,
   BillingStatement,
   Chantier,
+  Timesheet,
   WorkerStatement,
   WorkerType,
 } from "../core/index.js";
@@ -86,6 +87,19 @@ function tableRow(
     doc.text(c.text, c.x, y, { width: c.w, align: c.align ?? "left", lineBreak: false });
   }
   doc.y = y + (opts.size ?? 9) + 5;
+}
+
+/**
+ * Tronque un texte pour qu'il tienne dans la largeur de colonne (avec « … »).
+ * `lineBreak: false` empêche le retour à la ligne mais laisse déborder : ici on
+ * coupe réellement, ce qui évite les chevauchements entre lignes du tableau.
+ */
+function clip(doc: Doc, text: string, width: number, size = 9): string {
+  doc.fontSize(size);
+  if (doc.widthOfString(text) <= width) return text;
+  let out = text;
+  while (out.length > 1 && doc.widthOfString(out + "…") > width) out = out.slice(0, -1);
+  return out.trimEnd() + "…";
 }
 
 function ensureSpace(doc: Doc, needed: number): void {
@@ -337,4 +351,191 @@ function addFooter(doc: Doc): void {
       );
     doc.page.margins.bottom = saved;
   }
+}
+
+/* ===================================================================== */
+/*  Relevé d'heures individuel (par personne, sur une période)           */
+/* ===================================================================== */
+
+const KIND_TXT: Record<string, string> = {
+  TRAVAIL: "Travail",
+  ABSENCE: "Absence",
+  INTEMPERIE: "Intempérie",
+  ACCIDENT: "Accident",
+};
+
+// Colonnes du relevé individuel (portrait).
+const TS_COLS = {
+  date: { x: 40, w: 74 },
+  chantier: { x: 116, w: 150 },
+  arr: { x: 270, w: 48, align: "right" as const },
+  fin: { x: 320, w: 48, align: "right" as const },
+  pause: { x: 370, w: 44, align: "right" as const },
+  h: { x: 416, w: 52, align: "right" as const },
+  nat: { x: 472, w: 83, align: "right" as const },
+};
+
+function frDate(iso: string): string {
+  const [y = "", m = "", d = ""] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+/**
+ * Relevé d'heures individuel : une personne par page, jour par jour avec
+ * heure d'arrivée / heure d'arrêt (ou total d'heures saisi directement).
+ */
+export async function workerTimesheetPdf(
+  sheets: Timesheet[],
+  chantiers: Chantier[],
+  from: string,
+  to: string,
+): Promise<Buffer> {
+  const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+  let first = true;
+
+  if (sheets.length === 0) {
+    header(doc, "Relevé d'heures individuel", `Période du ${frDate(from)} au ${frDate(to)}`);
+    doc.font("Helvetica").fontSize(10).fillColor("#64748b").text("Aucun pointage sur la période.");
+  }
+
+  for (const s of sheets) {
+    if (!first) doc.addPage();
+    first = false;
+
+    header(
+      doc,
+      "Relevé d'heures individuel",
+      `Période du ${frDate(from)} au ${frDate(to)}`,
+    );
+
+    // Identité
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(14)
+      .fillColor("#0f172a")
+      .text(`${s.worker.lastName.toUpperCase()} ${s.worker.firstName}`, 40, doc.y);
+    doc
+      .font("Helvetica")
+      .fontSize(9.5)
+      .fillColor("#64748b")
+      .text(
+        [
+          TYPE_LABEL[s.worker.type as WorkerType],
+          s.worker.trade,
+          s.worker.category,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        40,
+        doc.y + 2,
+      );
+    doc.moveDown(0.6);
+
+    // Détail journalier
+    tableRow(
+      doc,
+      [
+        { text: "Date", ...TS_COLS.date },
+        { text: "Chantier", ...TS_COLS.chantier },
+        { text: "Arrivée", ...TS_COLS.arr },
+        { text: "Arrêt", ...TS_COLS.fin },
+        { text: "Pause", ...TS_COLS.pause },
+        { text: "Heures", ...TS_COLS.h },
+        { text: "Nature", ...TS_COLS.nat },
+      ],
+      { bold: true, color: "#475569" },
+    );
+
+    for (const d of s.days) {
+      ensureSpace(doc, 16);
+      const nature =
+        d.kind === "ABSENCE"
+          ? `Absence${d.absenceReason ? " (" + d.absenceReason.toLowerCase() + ")" : ""}`
+          : d.kind === "ACCIDENT"
+            ? "Accident"
+            : d.kind === "INTEMPERIE"
+              ? "Intempérie"
+              : d.holiday
+                ? "Travail (férié)"
+                : KIND_TXT[d.kind] || d.kind;
+      tableRow(doc, [
+        { text: frDate(d.date), ...TS_COLS.date },
+        { text: clip(doc, chantierLabel(chantiers, d.chantierId), TS_COLS.chantier.w), ...TS_COLS.chantier },
+        { text: d.startTime || "—", ...TS_COLS.arr },
+        { text: d.endTime || "—", ...TS_COLS.fin },
+        { text: d.breakMinutes ? `${d.breakMinutes} min` : "—", ...TS_COLS.pause },
+        { text: d.minutes ? h(Math.round((d.minutes / 60) * 100) / 100) : "—", ...TS_COLS.h },
+        { text: nature, ...TS_COLS.nat },
+      ]);
+    }
+
+    // Totaux de la période
+    doc.moveDown(0.3);
+    const right = doc.page.width - doc.page.margins.right;
+    doc.strokeColor("#cbd5e1").moveTo(40, doc.y).lineTo(right, doc.y).stroke();
+    doc.y += 5;
+    tableRow(
+      doc,
+      [
+        { text: `TOTAL PÉRIODE — ${s.totals.workedDays} jour(s) travaillé(s)`, x: 40, w: 370 },
+        { text: h(s.totals.workedHours), x: 416, w: 139, align: "right" },
+      ],
+      { bold: true, color: "#0f172a", size: 10.5 },
+    );
+
+    // Ventilation hebdomadaire des heures supplémentaires
+    if (s.weeks.length) {
+      doc.moveDown(0.5);
+      ensureSpace(doc, 60);
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#1e293b").text("Détail par semaine", 40, doc.y);
+      doc.moveDown(0.25);
+      tableRow(
+        doc,
+        [
+          { text: "Semaine", x: 40, w: 120 },
+          { text: "Heures", x: 200, w: 90, align: "right" },
+          { text: "Normales", x: 300, w: 80, align: "right" },
+          { text: "Sup. +25 %", x: 385, w: 80, align: "right" },
+          { text: "Sup. +50 %", x: 470, w: 85, align: "right" },
+        ],
+        { bold: true, color: "#475569" },
+      );
+      for (const w of s.weeks) {
+        ensureSpace(doc, 16);
+        tableRow(doc, [
+          { text: w.weekLabel, x: 40, w: 120 },
+          { text: h(w.workedHours), x: 200, w: 90, align: "right" },
+          { text: h(w.normalHours), x: 300, w: 80, align: "right" },
+          { text: w.overtime25Hours ? h(w.overtime25Hours) : "—", x: 385, w: 80, align: "right" },
+          { text: w.overtime50Hours ? h(w.overtime50Hours) : "—", x: 470, w: 85, align: "right" },
+        ]);
+      }
+    }
+
+    // Autres compteurs
+    const extras: string[] = [];
+    if (s.totals.weatherMinutes) extras.push(`Intempéries : ${h(Math.round((s.totals.weatherMinutes / 60) * 100) / 100)}`);
+    if (s.totals.holidayMinutes) extras.push(`Dont fériées : ${h(Math.round((s.totals.holidayMinutes / 60) * 100) / 100)}`);
+    if (s.totals.absenceDays) extras.push(`Absences : ${s.totals.absenceDays} jour(s)`);
+    if (s.totals.accidentCount) extras.push(`Accidents : ${s.totals.accidentCount}`);
+    if (extras.length) {
+      doc.moveDown(0.5);
+      doc.font("Helvetica").fontSize(9.5).fillColor("#334155").text(extras.join("  ·  "), 40, doc.y);
+    }
+
+    // Zone de signature (relevé remis au salarié)
+    doc.moveDown(1.6);
+    ensureSpace(doc, 70);
+    const y = doc.y;
+    doc.font("Helvetica").fontSize(9).fillColor("#64748b");
+    doc.text("Signature du salarié", 40, y);
+    doc.text("Signature du responsable", 320, y);
+    doc.strokeColor("#cbd5e1");
+    doc.moveTo(40, y + 44).lineTo(250, y + 44).stroke();
+    doc.moveTo(320, y + 44).lineTo(530, y + 44).stroke();
+    doc.y = y + 52;
+  }
+
+  addFooter(doc);
+  return toBuffer(doc);
 }

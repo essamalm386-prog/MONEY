@@ -40,8 +40,8 @@ import {
   type Role,
 } from "./auth.js";
 import { newId, nowISO } from "./ids.js";
-import { interimBillingPdf, salariedMonthlyPdf } from "./pdf.js";
-import { billingStatements } from "../core/index.js";
+import { interimBillingPdf, salariedMonthlyPdf, workerTimesheetPdf } from "./pdf.js";
+import { billingStatements, workerTimesheets } from "../core/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = join(here, "..", "..", "web");
@@ -93,9 +93,23 @@ export function createApp(repo: Repository): Express {
   // Tout le reste de l'API exige une session valide.
   api.use(requireAuth(repo));
 
+  /**
+   * Périmètre du compte connecté. Un CHEF est un salarié membre du personnel :
+   * il ne voit que les chantiers où il est lui-même affecté. Renvoie `null`
+   * pour les rôles qui voient tout (conducteur, admin).
+   */
+  const scopeChantiers = (req: Request): string[] | null => {
+    const u = req.user!;
+    if (u.role !== "CHEF") return null;
+    if (!u.workerId) return []; // compte chef non rattaché à un salarié
+    return repo.chantierIdsForWorker(u.workerId);
+  };
+  const inScope = (scope: string[] | null, chantierId: string) =>
+    scope === null || scope.includes(chantierId);
+
   api.get("/auth/me", (req, res) => {
-    const { id, username, displayName, role } = req.user!;
-    res.json({ id, username, displayName, role });
+    const { id, username, displayName, role, workerId } = req.user!;
+    res.json({ id, username, displayName, role, workerId, chantierIds: scopeChantiers(req) });
   });
   api.post("/auth/logout", (req, res) => {
     repo.deleteSession(req.user!.token);
@@ -118,7 +132,7 @@ export function createApp(repo: Repository): Express {
   // --- Comptes utilisateurs (admin) ---
   api.get("/users", requireRole("ADMIN"), (_req, res) => res.json(repo.listUsers()));
   api.post("/users", requireRole("ADMIN"), (req, res) => {
-    const { username, displayName, role, password } = req.body ?? {};
+    const { username, displayName, role, password, workerId } = req.body ?? {};
     if (!username || !displayName || !role || !password) {
       return res.status(400).json({ error: "username, displayName, role et password requis" });
     }
@@ -139,6 +153,7 @@ export function createApp(repo: Repository): Express {
       salt,
       active: true,
       createdAt: nowISO(),
+      workerId: workerId || undefined,
     };
     repo.createUser(user);
     const { passwordHash: _h, salt: _s, ...pub } = user;
@@ -166,6 +181,7 @@ export function createApp(repo: Repository): Express {
       patch.salt = salt;
       patch.passwordHash = hash;
     }
+    if ("workerId" in req.body) patch.workerId = req.body.workerId || undefined;
     repo.updateUser(target.id, patch);
     res.json(repo.listUsers().find((u) => u.id === target.id));
   });
@@ -178,7 +194,11 @@ export function createApp(repo: Repository): Express {
     res.status(201).json(a);
   });
 
-  api.get("/chantiers", (_req, res) => res.json(repo.listChantiers()));
+  api.get("/chantiers", (req, res) => {
+    const scope = scopeChantiers(req);
+    const all = repo.listChantiers();
+    res.json(scope === null ? all : all.filter((c) => scope.includes(c.id)));
+  });
   api.post("/chantiers", requireRole("CONDUCTEUR"), (req, res) => {
     if (!req.body.code || !req.body.name) {
       return res.status(400).json({ error: "code et name requis" });
@@ -220,13 +240,13 @@ export function createApp(repo: Repository): Express {
 
   // --- Affectations (planning des équipes) ---
   api.get("/assignments", (req, res) => {
-    res.json(
-      repo.listAssignments({
-        chantierId: req.query.chantierId as string | undefined,
-        from: req.query.from as string | undefined,
-        to: req.query.to as string | undefined,
-      }),
-    );
+    const scope = scopeChantiers(req);
+    const list = repo.listAssignments({
+      chantierId: req.query.chantierId as string | undefined,
+      from: req.query.from as string | undefined,
+      to: req.query.to as string | undefined,
+    });
+    res.json(scope === null ? list : list.filter((a) => scope.includes(a.chantierId)));
   });
 
   // Roster : personnes affectées à un chantier pour une date donnée (vue chef).
@@ -234,6 +254,9 @@ export function createApp(repo: Repository): Express {
     const chantierId = req.query.chantierId as string | undefined;
     const date = req.query.date as string | undefined;
     if (!chantierId || !date) return res.status(400).json({ error: "chantierId et date requis" });
+    if (!inScope(scopeChantiers(req), chantierId)) {
+      return res.status(403).json({ error: "chantier hors de votre périmètre" });
+    }
     try {
       const ids = assignedWorkerIds(repo.listAssignments({ chantierId }), chantierId, date);
       const workers = repo.listWorkers().filter((w) => ids.includes(w.id));
@@ -279,6 +302,9 @@ export function createApp(repo: Repository): Express {
   // --- Pointages ---
   api.post("/entries", (req, res) => {
     const input = req.body as TimeEntryInput;
+    if (!inScope(scopeChantiers(req), input.chantierId)) {
+      return res.status(403).json({ error: "chantier hors de votre périmètre" });
+    }
     try {
       const entry = buildTimeEntry(input, { id: newId("en"), now: nowISO() });
       res.status(201).json(repo.saveEntry(entry));
@@ -316,36 +342,46 @@ export function createApp(repo: Repository): Express {
   });
 
   api.get("/entries", (req, res) => {
-    res.json(
-      repo.queryEntries({
-        from: req.query.from as string | undefined,
-        to: req.query.to as string | undefined,
-        workerId: req.query.workerId as string | undefined,
-        chantierId: req.query.chantierId as string | undefined,
-      }),
-    );
+    const scope = scopeChantiers(req);
+    const list = repo.queryEntries({
+      from: req.query.from as string | undefined,
+      to: req.query.to as string | undefined,
+      workerId: req.query.workerId as string | undefined,
+      chantierId: req.query.chantierId as string | undefined,
+    });
+    res.json(scope === null ? list : list.filter((e) => scope.includes(e.chantierId)));
   });
 
   // --- Synchronisation local-first ---
   api.post("/sync/push", (req, res) => {
     const incoming = (req.body.entries ?? []) as TimeEntry[];
     if (!Array.isArray(incoming)) return res.status(400).json({ error: "entries[] attendu" });
-    res.json({ ...repo.syncPush(incoming), serverTime: nowISO() });
+    const scope = scopeChantiers(req);
+    const allowed = scope === null ? incoming : incoming.filter((e) => scope.includes(e.chantierId));
+    const rejected = incoming.length - allowed.length;
+    res.json({ ...repo.syncPush(allowed), rejected, serverTime: nowISO() });
   });
 
   api.get("/sync/pull", (req, res) => {
     const since = (req.query.since as string) || "1970-01-01T00:00:00.000Z";
-    res.json({ entries: repo.syncPull(since), serverTime: nowISO() });
+    const scope = scopeChantiers(req);
+    const entries = repo.syncPull(since);
+    res.json({
+      entries: scope === null ? entries : entries.filter((e) => scope.includes(e.chantierId)),
+      serverTime: nowISO(),
+    });
   });
 
   // --- Rapports (jour / semaine / mois) ---
   api.get("/reports/summary", (req: Request, res: Response) => {
-    const entries = repo.queryEntries({
+    const scope = scopeChantiers(req);
+    const entries0 = repo.queryEntries({
       from: req.query.from as string | undefined,
       to: req.query.to as string | undefined,
       chantierId: req.query.chantierId as string | undefined,
       workerId: req.query.workerId as string | undefined,
     });
+    const entries = scope === null ? entries0 : entries0.filter((e) => scope.includes(e.chantierId));
     const workers = repo.listWorkers();
     const base = {
       totals: totals(entries),
@@ -373,6 +409,7 @@ export function createApp(repo: Repository): Express {
 
   // --- Exports PDF (relevés mensuels) ---
   const MONTH_RE = /^\d{4}-\d{2}$/;
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
   api.get("/reports/interim.pdf", requireRole("ADMIN"), async (req, res) => {
     const month = req.query.month as string | undefined;
@@ -411,6 +448,39 @@ export function createApp(repo: Repository): Express {
     const pdf = await interimBillingPdf(statements, chantiers, agencies, month, filterLabel);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="releve-interim-${month}.pdf"`);
+    res.send(pdf);
+  });
+
+  // Relevés d'heures individuels sur une période libre.
+  // Accessible aux conducteurs et admins ; un chef n'y a pas accès (il ne gère
+  // pas la paie), mais les données restent limitées à son périmètre s'il y a lieu.
+  api.get("/reports/timesheet.pdf", requireRole("CONDUCTEUR"), async (req, res) => {
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
+    if (!from || !DATE_RE.test(from) || !to || !DATE_RE.test(to)) {
+      return res.status(400).json({ error: "paramètres from et to (AAAA-MM-JJ) requis" });
+    }
+    if (from > to) return res.status(400).json({ error: "période invalide (from > to)" });
+
+    const workerId = req.query.workerId as string | undefined;
+    const chantierId = req.query.chantierId as string | undefined;
+    const scope = scopeChantiers(req);
+
+    let entries = repo.queryEntries({ from, to, ...(chantierId ? { chantierId } : {}) });
+    if (scope !== null) entries = entries.filter((e) => scope.includes(e.chantierId));
+
+    const workers = repo.listWorkers();
+    const sheets = workerTimesheets(
+      entries,
+      workers,
+      from,
+      to,
+      (w) => (!workerId || w.id === workerId),
+    );
+    const pdf = await workerTimesheetPdf(sheets, repo.listChantiers(), from, to);
+    res.setHeader("Content-Type", "application/pdf");
+    const name = workerId ? `releve-${workerId}` : "releves-individuels";
+    res.setHeader("Content-Disposition", `attachment; filename="${name}-${from}_${to}.pdf"`);
     res.send(pdf);
   });
 

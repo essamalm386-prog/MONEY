@@ -66,6 +66,7 @@ export class Store {
     this.role = ls("authRole");
     this.userName = ls("userName");
     this.username = ls("authUsername");
+    this.workerId = ls("authWorkerId");
     this.authListeners = new Set();
     // État de la synchronisation automatique : le serveur n'est joignable
     // qu'au dépôt (Wi-Fi) — hors de portée, on réessaie sans déranger le chef.
@@ -97,6 +98,7 @@ export class Store {
       localStorage.setItem("authRole", this.role || "");
       localStorage.setItem("userName", this.userName || "");
       localStorage.setItem("authUsername", this.username || "");
+      localStorage.setItem("authWorkerId", this.workerId || "");
     } catch {
       /* stockage indisponible */
     }
@@ -148,7 +150,10 @@ export class Store {
     this.role = body.user.role;
     this.userName = body.user.displayName;
     this.username = body.user.username;
+    this.workerId = body.user.workerId || "";
     this._saveSession();
+    // Récupère le périmètre (chantiers du chef) juste après la connexion.
+    this.refreshMe().catch(() => {});
     this._emitAuth();
     return body.user;
   }
@@ -440,6 +445,17 @@ export class Store {
       this._syncing = false;
       this._emit();
     }
+  }
+
+  /** Rafraîchit l'identité et le périmètre du compte connecté. */
+  async refreshMe() {
+    const r = await this.authFetch("/api/auth/me");
+    if (!r.ok) return null;
+    const me = await r.json();
+    this.workerId = me.workerId || "";
+    this.role = me.role || this.role;
+    this._saveSession();
+    return me;
   }
 
   /** fetch avec délai maximal : une adresse injoignable répond en ~6 s, pas 30. */

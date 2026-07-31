@@ -11,7 +11,8 @@ L'application **fonctionne en local et en ligne** : saisie possible **hors-ligne
   **personnel affecté**. Gestion des **remplacements en cours de semaine**
   (un intérimaire quitte le chantier, un autre le remplace à partir d'un jour donné).
 - **Saisie quotidienne par chantier** : pour chaque personne de l'équipe, pointer
-  - le **travail** (créneau début/fin + pause, ou total d'heures),
+  - le **travail**, au choix : **heure d'arrivée / heure d'arrêt** (+ pause) ou
+    directement le **total d'heures effectuées** dans la journée,
   - une **absence** (congé payé, RTT, maladie, formation, injustifiée…),
   - une **intempérie** (heures perdues, avec logique de chômage-intempéries BTP),
   - un **accident du travail** (gravité, circonstances, rappel du délai de déclaration 48 h).
@@ -26,7 +27,11 @@ L'application **fonctionne en local et en ligne** : saisie possible **hors-ligne
     **indemnités de déplacement**, **prix unitaires** et **totaux** — pour
     comparer et vérifier les factures des agences ;
     impression **filtrable par agence, par chantier ou par catégorie** ;
-  - **relevé salariés / stagiaires / alternants** : détail des **heures par chantier**.
+  - **relevé salariés / stagiaires / alternants** : détail des **heures par chantier** ;
+  - **relevé d'heures individuel** (par personne, sur une **période libre**) :
+    jour par jour avec **heure d'arrivée, heure d'arrêt**, pause et heures
+    effectuées, totaux de la période, ventilation des heures supplémentaires par
+    semaine et **zones de signature** — le justificatif à remettre au salarié.
 - **Coûts par chantier** (vue admin) : à la création d'une personne, on renseigne
   ce qu'elle **coûte** — salaire horaire chargé, **panier repas**, **indemnité de
   déplacement** — et cela **en fonction de chaque chantier** (zones différentes).
@@ -68,9 +73,15 @@ L'application est protégée par des **comptes** (identifiant + mot de passe) :
 
 | Rôle | Droits |
 |---|---|
-| **Chef de chantier** | pointe son équipe, consulte planning et rapports (sans les coûts) |
+| **Chef de chantier** | pointe son équipe, consulte planning et rapports (sans les coûts) — **uniquement sur les chantiers où il est lui-même affecté** |
 | **Conducteur de travaux** | + affectations d'équipes, remplacements, référentiel (personnel, chantiers, agences) |
 | **Administrateur** | + coûts, relevés PDF, **gestion des comptes** (Profil → Comptes & rôles) |
+
+**Le chef de chantier est un salarié** : son compte est rattaché à sa fiche
+personnel (Profil → Comptes & rôles → *Salarié correspondant*). À l'ouverture de
+l'application, il se retrouve directement sur le chantier où le conducteur l'a
+affecté, et ne voit que celui-là. Changer son affectation suffit à le déplacer
+d'un chantier à l'autre — aucun réglage de son côté.
 
 Au premier démarrage, le serveur crée le compte **admin / admin** (affiché dans
 la console) — **changez ce mot de passe immédiatement** puis créez les comptes

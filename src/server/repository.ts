@@ -120,6 +120,7 @@ function rowToUser(r: any): UserRecord {
     role: r.role as Role,
     active: bool(r.active),
     createdAt: r.createdAt,
+    workerId: r.workerId ?? undefined,
     passwordHash: r.passwordHash,
     salt: r.salt,
   };
@@ -140,10 +141,10 @@ export class Repository {
   createUser(u: UserRecord): void {
     this.db
       .prepare(
-        `INSERT INTO users(id,username,displayName,role,passwordHash,salt,active,createdAt)
-         VALUES(@id,@username,@displayName,@role,@passwordHash,@salt,@active,@createdAt)`,
+        `INSERT INTO users(id,username,displayName,role,passwordHash,salt,active,createdAt,workerId)
+         VALUES(@id,@username,@displayName,@role,@passwordHash,@salt,@active,@createdAt,@workerId)`,
       )
-      .run({ ...u, active: int(u.active) });
+      .run({ ...u, active: int(u.active), workerId: u.workerId ?? null });
   }
   getUserByUsername(username: string): UserRecord | undefined {
     const r = this.db.prepare("SELECT * FROM users WHERE username = ?").get(username);
@@ -161,7 +162,9 @@ export class Repository {
   }
   updateUser(
     id: string,
-    patch: Partial<Pick<UserRecord, "displayName" | "role" | "active" | "passwordHash" | "salt">>,
+    patch: Partial<
+      Pick<UserRecord, "displayName" | "role" | "active" | "passwordHash" | "salt" | "workerId">
+    >,
   ): void {
     const existing = this.getUserById(id);
     if (!existing) throw new Error("utilisateur introuvable");
@@ -169,9 +172,21 @@ export class Repository {
     this.db
       .prepare(
         `UPDATE users SET displayName=@displayName, role=@role, active=@active,
-           passwordHash=@passwordHash, salt=@salt WHERE id=@id`,
+           passwordHash=@passwordHash, salt=@salt, workerId=@workerId WHERE id=@id`,
       )
-      .run({ ...merged, active: int(merged.active) });
+      .run({ ...merged, active: int(merged.active), workerId: merged.workerId ?? null });
+  }
+
+  /**
+   * Chantiers d'un chef : ceux où le salarié qui lui correspond est affecté
+   * (affectations non supprimées, période éventuellement passée incluse pour
+   * qu'il puisse encore corriger un pointage récent).
+   */
+  chantierIdsForWorker(workerId: string): string[] {
+    const rows = this.db
+      .prepare("SELECT DISTINCT chantierId FROM assignments WHERE workerId = ? AND deleted = 0")
+      .all(workerId) as Array<{ chantierId: string }>;
+    return rows.map((r) => r.chantierId);
   }
 
   createSession(token: string, userId: string, createdAt: string, expiresAt: string): void {

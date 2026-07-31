@@ -78,7 +78,10 @@ CREATE TABLE IF NOT EXISTS users (
   passwordHash TEXT NOT NULL,
   salt         TEXT NOT NULL,
   active       INTEGER NOT NULL DEFAULT 1,
-  createdAt    TEXT NOT NULL
+  createdAt    TEXT NOT NULL,
+  -- Salarié correspondant : un chef de chantier fait partie du personnel et
+  -- est lui-même affecté aux chantiers qu'il encadre.
+  workerId     TEXT REFERENCES workers(id)
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -131,6 +134,12 @@ function migrate(db: DB): void {
   const cols = db.prepare("PRAGMA table_info(workers)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "category")) {
     db.exec("ALTER TABLE workers ADD COLUMN category TEXT");
+  }
+
+  // Lien compte utilisateur → salarié (chef de chantier membre de l'équipe).
+  const userCols = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+  if (userCols.length && !userCols.some((c) => c.name === "workerId")) {
+    db.exec("ALTER TABLE users ADD COLUMN workerId TEXT REFERENCES workers(id)");
   }
 
   // Nouveaux prix unitaires sur la grille de coûts.

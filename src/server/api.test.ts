@@ -138,8 +138,10 @@ describe("API affectations & remplacement", () => {
   });
 
   it("crée une affectation hebdomadaire (lundi→dimanche)", async () => {
+    // wk_nguyen n'est rattaché à aucun compte : n'altère pas le périmètre
+    // du chef testé plus bas (wk_dupont, affecté au seul chantier de Lyon).
     const res = await post("/api/assignments", {
-      workerId: "wk_dupont",
+      workerId: "wk_nguyen",
       chantierId: "ch_villeurb",
       anyDate: "2026-08-05",
       assignedBy: "conducteur1",
@@ -268,6 +270,97 @@ describe("Authentification & rôles", () => {
     const tok = ((await login.json()) as any).token as string;
     const me = await get("/api/auth/me", tok);
     expect(me.role).toBe("CONDUCTEUR");
+  });
+});
+
+describe("Périmètre du chef de chantier (salarié affecté)", () => {
+  // Le compte « chef » est rattaché au salarié wk_dupont, affecté à ch_lyon.
+  it("ne voit que les chantiers où son salarié est affecté", async () => {
+    const chantiers = await get("/api/chantiers", chefToken);
+    expect(chantiers.map((c: any) => c.id)).toEqual(["ch_lyon"]);
+    // L'admin, lui, voit les deux.
+    expect((await get("/api/chantiers")).length).toBe(2);
+  });
+
+  it("expose son périmètre dans /auth/me", async () => {
+    const me = await get("/api/auth/me", chefToken);
+    expect(me.workerId).toBe("wk_dupont");
+    expect(me.chantierIds).toEqual(["ch_lyon"]);
+  });
+
+  it("ne reçoit que les pointages et affectations de son chantier", async () => {
+    const entries = await get("/api/entries?from=2026-07-27&to=2026-07-31", chefToken);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((e: any) => e.chantierId === "ch_lyon")).toBe(true);
+    const asg = await get("/api/assignments", chefToken);
+    expect(asg.every((a: any) => a.chantierId === "ch_lyon")).toBe(true);
+  });
+
+  it("ne peut pas pointer sur un chantier hors de son périmètre (403)", async () => {
+    const res = await post(
+      "/api/entries",
+      { workerId: "wk_koffi", chantierId: "ch_villeurb", date: "2026-09-15", kind: "TRAVAIL", minutes: 480, recordedBy: "chef" },
+      chefToken,
+    );
+    expect(res.status).toBe(403);
+    // Mais il peut pointer sur le sien.
+    const ok = await post(
+      "/api/entries",
+      { workerId: "wk_silva", chantierId: "ch_lyon", date: "2026-09-15", kind: "TRAVAIL", minutes: 480, recordedBy: "chef" },
+      chefToken,
+    );
+    expect(ok.status).toBe(201);
+  });
+
+  it("la synchro pull et push respectent le périmètre", async () => {
+    const pull = await get("/api/sync/pull?since=1970-01-01T00:00:00.000Z", chefToken);
+    expect(pull.entries.every((e: any) => e.chantierId === "ch_lyon")).toBe(true);
+    const push = await post(
+      "/api/sync/push",
+      {
+        entries: [
+          { id: "sync_scope_1", workerId: "wk_koffi", chantierId: "ch_villeurb", date: "2026-09-20", kind: "TRAVAIL", minutes: 480, recordedBy: "chef", createdAt: "2026-09-20T18:00:00.000Z", updatedAt: "2026-09-20T18:00:00.000Z", version: 1, sync: "LOCAL" },
+        ],
+      },
+      chefToken,
+    );
+    const body = (await push.json()) as any;
+    expect(body.rejected).toBe(1);
+    expect(body.applied).toEqual([]);
+  });
+
+  it("son rapport ne couvre que son chantier", async () => {
+    const rep = await get("/api/reports/summary?from=2026-07-27&to=2026-07-31", chefToken);
+    expect(Object.keys(rep.byChantier)).toEqual(["ch_lyon"]);
+  });
+});
+
+describe("API relevé d'heures individuel", () => {
+  async function pdf(path: string, token?: string) {
+    const res = await fetch(base + path, {
+      headers: { authorization: `Bearer ${token ?? adminToken}` },
+    });
+    return { res, buf: Buffer.from(await res.arrayBuffer()) };
+  }
+  it("génère un PDF pour une personne sur une période", async () => {
+    const { res, buf } = await pdf("/api/reports/timesheet.pdf?from=2026-07-27&to=2026-07-31&workerId=wk_dupont");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(buf.length).toBeGreaterThan(800);
+  });
+  it("génère un PDF pour tout le personnel", async () => {
+    const { res, buf } = await pdf("/api/reports/timesheet.pdf?from=2026-07-27&to=2026-07-31");
+    expect(res.status).toBe(200);
+    expect(buf.length).toBeGreaterThan(1000);
+  });
+  it("refuse une période invalide ou manquante (400)", async () => {
+    expect((await pdf("/api/reports/timesheet.pdf")).res.status).toBe(400);
+    expect((await pdf("/api/reports/timesheet.pdf?from=2026-07-31&to=2026-07-27")).res.status).toBe(400);
+  });
+  it("inaccessible à un chef (403)", async () => {
+    const { res } = await pdf("/api/reports/timesheet.pdf?from=2026-07-27&to=2026-07-31", chefToken);
+    expect(res.status).toBe(403);
   });
 });
 

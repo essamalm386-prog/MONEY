@@ -27,6 +27,8 @@ export interface User {
   role: Role;
   active: boolean;
   createdAt: string;
+  /** Salarié correspondant : un chef est membre du personnel qu'il encadre. */
+  workerId?: string;
 }
 
 export interface SessionUser extends User {

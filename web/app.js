@@ -363,7 +363,7 @@ function siteCardHtml(label, name, meta) {
         <div class="name">${esc(name)}</div>
         <div class="meta">${esc(meta)}</div>
       </div>
-      <span class="chev">${I.chevR}</span>
+      ${canSwitchSite() ? `<span class="chev">${I.chevR}</span>` : ""}
     </button>`;
 }
 
@@ -452,7 +452,9 @@ function renderAccueil() {
         <button class="link" id="see-team">Voir tout</button>
       </div>
       ${
-        team.length === 0
+        state.ref.chantiers.length === 0
+          ? `<div class="empty">Aucun chantier ne vous est affecté.<br/>Demandez à votre conducteur de travaux de vous affecter à un chantier.</div>`
+          : team.length === 0
           ? `<div class="empty">Personne n'est affecté à ce chantier aujourd'hui.<br/>Constituez l'équipe dans l'onglet <strong>Équipe</strong>.</div>`
           : team
               .slice(0, 6)
@@ -697,7 +699,16 @@ function openEntrySheet(workerId) {
   const close = () => ov.remove();
 
   const fields = ov.querySelector("#fields");
-  const paint = () => (fields.innerHTML = fieldsFor(kind, existing));
+  let mode = existing && !existing.startTime && existing.minutes ? "total" : "horaires";
+  const paint = () => {
+    fields.innerHTML = fieldsFor(kind, existing, mode);
+    fields.querySelectorAll("#seg-mode button").forEach((b) => {
+      b.onclick = () => {
+        mode = b.dataset.m;
+        paint();
+      };
+    });
+  };
   paint();
 
   ov.querySelectorAll("#seg-kind button").forEach((b) => {
@@ -732,16 +743,30 @@ function openEntrySheet(workerId) {
   };
 }
 
-function fieldsFor(kind, e) {
+function fieldsFor(kind, e, mode) {
   if (kind === "TRAVAIL") {
+    // Deux façons de valider une journée : les horaires réels (arrivée/arrêt,
+    // qui figureront sur le relevé individuel) ou directement le total d'heures.
+    const m = mode || (e && !e.startTime && e.minutes ? "total" : "horaires");
     return `
-      <div class="grid2">
-        <div><label class="f">Début</label><input type="time" id="start" value="${e?.startTime || "07:30"}" /></div>
-        <div><label class="f">Fin</label><input type="time" id="end" value="${e?.endTime || "16:30"}" /></div>
+      <div class="seg" id="seg-mode" style="margin-top:10px">
+        <button data-m="horaires" class="${m === "horaires" ? "on" : ""}">Arrivée / arrêt</button>
+        <button data-m="total" class="${m === "total" ? "on" : ""}">Total d'heures</button>
       </div>
-      <label class="f">Pause (minutes)</label>
-      <input type="number" id="break" min="0" step="5" value="${e?.breakMinutes ?? 60}" />
-      <p class="hint">Les heures supplémentaires sont calculées à la semaine (35 h, puis +25 % et +50 %).</p>`;
+      ${
+        m === "horaires"
+          ? `<div class="grid2">
+               <div><label class="f">Heure d'arrivée</label><input type="time" id="start" value="${e?.startTime || "07:30"}" /></div>
+               <div><label class="f">Heure d'arrêt</label><input type="time" id="end" value="${e?.endTime || "16:30"}" /></div>
+             </div>
+             <label class="f">Pause (minutes)</label>
+             <input type="number" id="break" min="0" step="5" value="${e?.breakMinutes ?? 60}" />
+             <p class="hint">Les horaires apparaîtront sur le relevé d'heures individuel du salarié.</p>`
+          : `<label class="f">Heures effectuées dans la journée</label>
+             <input type="number" id="hours" min="0" max="13" step="0.25" value="${e?.minutes ? minutesToHours(e.minutes) : 8}" />
+             <p class="hint">Saisie rapide, sans horaires détaillés.</p>`
+      }
+      <p class="hint">Heures supplémentaires calculées à la semaine (35 h, puis +25 % et +50 %).</p>`;
   }
   if (kind === "INTEMPERIE") {
     return `
@@ -787,9 +812,16 @@ function collectFields(kind, ov, workerId, existing) {
     recordedBy: store.userName || "chef",
   };
   if (kind === "TRAVAIL") {
-    const minutes = workedMinutes(v("#start"), v("#end"), Number(v("#break") || 0));
-    if (minutes <= 0) throw new Error("La durée doit être supérieure à zéro");
-    return { ...base, minutes, startTime: v("#start"), endTime: v("#end"), breakMinutes: Number(v("#break") || 0) };
+    if (ov.querySelector("#start")) {
+      const minutes = workedMinutes(v("#start"), v("#end"), Number(v("#break") || 0));
+      if (minutes <= 0) throw new Error("La durée doit être supérieure à zéro");
+      return { ...base, minutes, startTime: v("#start"), endTime: v("#end"), breakMinutes: Number(v("#break") || 0) };
+    }
+    const minutes = Math.round(Number(v("#hours")) * 60);
+    if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("Indiquez les heures effectuées");
+    if (minutes > 13 * 60) throw new Error("Durée journalière irréaliste (plus de 13 h)");
+    // Saisie directe : on efface les horaires éventuels pour rester cohérent.
+    return { ...base, minutes, startTime: undefined, endTime: undefined, breakMinutes: undefined };
   }
   if (kind === "INTEMPERIE") {
     const minutes = Math.round(Number(v("#hours")) * 60);
@@ -807,7 +839,17 @@ function collectFields(kind, ov, workerId, existing) {
   };
 }
 
+/** Un chef n'encadre que le(s) chantier(s) où il est affecté. */
+function canSwitchSite() {
+  return state.ref.chantiers.length > 1;
+}
+
 function openSitePicker() {
+  if (!canSwitchSite()) {
+    const c = chantierById(state.chantierId);
+    toast(c ? `Vous encadrez le chantier ${c.name}` : "Aucun chantier affecté");
+    return;
+  }
   const ov = document.createElement("div");
   ov.className = "overlay";
   ov.innerHTML = `
@@ -1143,6 +1185,7 @@ function renderRapports() {
 
     ${personTable(inRange)}
     ${store.isAdmin ? costCard(cost, inRange) : ""}
+    ${store.canManage ? timesheetCard() : ""}
     ${store.isAdmin ? exportCard() : ""}`;
 
   view().querySelectorAll("#seg-period button").forEach((b) => {
@@ -1271,6 +1314,32 @@ function costCard(cost, entries) {
     </div>`;
 }
 
+/** Relevés d'heures individuels sur une période libre (conducteur & admin). */
+function timesheetCard() {
+  const { from, to } = periodRange();
+  return `
+    <div class="card">
+      <div class="card-head"><h2>Relevés d'heures individuels</h2><span class="sub">par période</span></div>
+      <p class="muted">Détail jour par jour (arrivée, arrêt, heures) et totaux — le justificatif à remettre au salarié.</p>
+      <div class="grid2">
+        <div><label class="f">Du</label><input type="date" id="ts-from" value="${from}" /></div>
+        <div><label class="f">Au</label><input type="date" id="ts-to" value="${to}" /></div>
+      </div>
+      <label class="f">Personne</label>
+      <select id="ts-worker">
+        <option value="">Tout le personnel (une page par personne)</option>
+        ${state.ref.workers
+          .filter((w) => w.active)
+          .map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)}</option>`)
+          .join("")}
+      </select>
+      <button class="btn block" id="ts-pdf" style="margin-top:12px" ${!store.online ? "disabled" : ""}>
+        ${I.doc} Éditer le relevé d'heures
+      </button>
+      ${!store.online ? `<p class="hint">Connexion requise pour générer les PDF.</p>` : ""}
+    </div>`;
+}
+
 function exportCard() {
   return `
     <div class="card">
@@ -1336,6 +1405,19 @@ async function downloadPdf(path, filename) {
 }
 
 function bindExports() {
+  const ts = el("ts-pdf");
+  if (ts) {
+    ts.onclick = () => {
+      const from = el("ts-from").value;
+      const to = el("ts-to").value;
+      if (!from || !to) return toast("Indiquez la période", "err");
+      if (from > to) return toast("Période invalide (début après fin)", "err");
+      const q = new URLSearchParams({ from, to });
+      const w = el("ts-worker").value;
+      if (w) q.set("workerId", w);
+      downloadPdf(`/api/reports/timesheet.pdf?${q}`, `releve-heures-${from}_${to}.pdf`);
+    };
+  }
   const int = el("exp-interim");
   if (!int) return; // cartes admin absentes pour les autres rôles
   const month = () => el("exp-month").value || monthKey(state.date);
@@ -1655,7 +1737,7 @@ function usersCard() {
               .map(
                 (u) => `<div class="rowline" data-user="${u.id}" style="cursor:pointer">
                   <div><div style="font-weight:700">${esc(u.displayName)}${u.active ? "" : ` <span class="chip neutral">désactivé</span>`}</div>
-                  <div class="muted">${esc(u.username)}</div></div>
+                  <div class="muted">${esc(u.username)}${u.workerId ? " · " + esc(workerName(u.workerId)) : u.role === "CHEF" ? " · ⚠ aucun salarié rattaché" : ""}</div></div>
                   <span class="chip ${u.role === "ADMIN" ? "ACCIDENT" : u.role === "CONDUCTEUR" ? "INTEMPERIE" : "TRAVAIL"}">${ROLE_LABEL[u.role]}</span>
                 </div>`,
               )
@@ -1678,6 +1760,12 @@ function openUserSheet() {
      <select id="u-role">${Object.entries(ROLE_LABEL)
        .map(([k, v]) => `<option value="${k}">${v}</option>`)
        .join("")}</select>
+     <label class="f">Salarié correspondant (obligatoire pour un chef)</label>
+     <select id="u-worker"><option value="">—</option>${state.ref.workers
+       .filter((w) => w.active)
+       .map((w) => `<option value="${w.id}">${esc(w.lastName)} ${esc(w.firstName)}${w.trade ? " · " + esc(w.trade) : ""}</option>`)
+       .join("")}</select>
+     <p class="hint">Un chef de chantier fait partie du personnel : il ne verra que les chantiers où ce salarié est affecté.</p>
      <label class="f">Mot de passe</label>
      <input id="u-pass" type="text" placeholder="4 caractères minimum" />`,
     async (ov) => {
@@ -1687,6 +1775,7 @@ function openUserSheet() {
           displayName: val(ov, "#u-name"),
           username: val(ov, "#u-username"),
           role: val(ov, "#u-role"),
+          workerId: val(ov, "#u-worker") || undefined,
           password: ov.querySelector("#u-pass").value,
         }),
       });
@@ -1705,12 +1794,21 @@ function openUserEditSheet(userId) {
      <select id="ue-role">${Object.entries(ROLE_LABEL)
        .map(([k, v]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${v}</option>`)
        .join("")}</select>
+     <label class="f">Salarié correspondant</label>
+     <select id="ue-worker"><option value="">—</option>${state.ref.workers
+       .filter((w) => w.active)
+       .map((w) => `<option value="${w.id}" ${u.workerId === w.id ? "selected" : ""}>${esc(w.lastName)} ${esc(w.firstName)}</option>`)
+       .join("")}</select>
      <label class="f">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
      <input id="ue-pass" type="text" />
      <label class="f">Statut du compte</label>
      <select id="ue-active"><option value="1" ${u.active ? "selected" : ""}>Actif</option><option value="0" ${u.active ? "" : "selected"}>Désactivé</option></select>`,
     async (ov) => {
-      const body = { role: val(ov, "#ue-role"), active: val(ov, "#ue-active") === "1" };
+      const body = {
+        role: val(ov, "#ue-role"),
+        active: val(ov, "#ue-active") === "1",
+        workerId: val(ov, "#ue-worker") || "",
+      };
       const pass = ov.querySelector("#ue-pass").value;
       if (pass) body.password = pass;
       const r = await store.authFetch(`/api/users/${u.id}`, {
