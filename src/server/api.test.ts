@@ -9,6 +9,8 @@ import { seed } from "./seed.js";
 let server: Server;
 let base: string;
 let repo: Repository;
+let adminToken: string;
+let chefToken: string;
 
 beforeAll(async () => {
   const db = openDb(":memory:");
@@ -20,17 +22,30 @@ beforeAll(async () => {
   });
   const { port } = server.address() as AddressInfo;
   base = `http://127.0.0.1:${port}`;
+
+  // Sessions de test : admin (tous droits) et chef (droits restreints).
+  const login = async (username: string, password: string) => {
+    const r = await fetch(base + "/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    return ((await r.json()) as any).token as string;
+  };
+  adminToken = await login("admin", "admin");
+  chefToken = await login("chef", "chef");
 });
 
 afterAll(() => {
   server.close();
 });
 
-const get = (p: string): Promise<any> => fetch(base + p).then((r) => r.json());
-const post = (p: string, body: unknown) =>
+const get = (p: string, token?: string): Promise<any> =>
+  fetch(base + p, { headers: { authorization: `Bearer ${token ?? adminToken}` } }).then((r) => r.json());
+const post = (p: string, body: unknown, token?: string) =>
   fetch(base + p, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization: `Bearer ${token ?? adminToken}` },
     body: JSON.stringify(body),
   });
 
@@ -165,7 +180,7 @@ describe("API coûts", () => {
 
 describe("API exports PDF", () => {
   async function fetchPdf(path: string) {
-    const res = await fetch(base + path);
+    const res = await fetch(base + path, { headers: { authorization: `Bearer ${adminToken}` } });
     const buf = Buffer.from(await res.arrayBuffer());
     return { res, buf };
   }
@@ -182,8 +197,77 @@ describe("API exports PDF", () => {
     expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   });
   it("month manquant → 400", async () => {
-    const res = await fetch(base + "/api/reports/interim.pdf");
+    const res = await fetch(base + "/api/reports/interim.pdf", {
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("Authentification & rôles", () => {
+  it("refuse les requêtes sans jeton (401)", async () => {
+    const res = await fetch(base + "/api/workers");
+    expect(res.status).toBe(401);
+  });
+  it("refuse un mauvais mot de passe", async () => {
+    const res = await fetch(base + "/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "admin", password: "mauvais" }),
+    });
+    expect(res.status).toBe(401);
+  });
+  it("un chef ne voit pas les coûts (403) ni la paie dans la synthèse", async () => {
+    const res = await fetch(base + "/api/costs", {
+      headers: { authorization: `Bearer ${chefToken}` },
+    });
+    expect(res.status).toBe(403);
+    const summary = await get("/api/reports/summary?from=2026-07-27&to=2026-07-31", chefToken);
+    expect(summary.cost).toBeUndefined();
+    expect(summary.payroll).toBeUndefined();
+    expect(summary.totals.workedMinutes).toBeGreaterThan(0);
+  });
+  it("un chef ne peut ni exporter un PDF (403) ni gérer les comptes", async () => {
+    const pdf = await fetch(base + "/api/reports/interim.pdf?month=2026-07", {
+      headers: { authorization: `Bearer ${chefToken}` },
+    });
+    expect(pdf.status).toBe(403);
+    const users = await fetch(base + "/api/users", {
+      headers: { authorization: `Bearer ${chefToken}` },
+    });
+    expect(users.status).toBe(403);
+  });
+  it("un chef ne peut pas modifier le planning (403) mais peut pointer", async () => {
+    const asg = await post(
+      "/api/assignments",
+      { workerId: "wk_dupont", chantierId: "ch_lyon", anyDate: "2026-09-07", assignedBy: "x" },
+      chefToken,
+    );
+    expect(asg.status).toBe(403);
+    const entry = await post(
+      "/api/entries",
+      { workerId: "wk_dupont", chantierId: "ch_lyon", date: "2026-09-08", kind: "TRAVAIL", minutes: 480, recordedBy: "chef" },
+      chefToken,
+    );
+    expect(entry.status).toBe(201);
+  });
+  it("l'admin crée un compte, le nouveau venu se connecte", async () => {
+    const created = await post("/api/users", {
+      username: "paul",
+      displayName: "Paul Test",
+      role: "CONDUCTEUR",
+      password: "paul1234",
+    });
+    expect(created.status).toBe(201);
+    const login = await fetch(base + "/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "paul", password: "paul1234" }),
+    });
+    expect(login.status).toBe(200);
+    const tok = ((await login.json()) as any).token as string;
+    const me = await get("/api/auth/me", tok);
+    expect(me.role).toBe("CONDUCTEUR");
   });
 });
 

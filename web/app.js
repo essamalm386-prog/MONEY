@@ -26,6 +26,8 @@ const store = new Store();
 const el = (id) => document.getElementById(id);
 const view = () => el("view");
 
+const ROLE_LABEL = { CHEF: "Chef de chantier", CONDUCTEUR: "Conducteur de travaux", ADMIN: "Administrateur" };
+
 const TYPE_LABEL = {
   EMPLOYE: "Salarié",
   INTERIMAIRE: "Intérim",
@@ -45,6 +47,7 @@ const state = {
   showAllCh: false,
   ref: { chantiers: [], workers: [], agencies: [], assignments: [], costs: [] },
   entries: [],
+  users: [],
 };
 
 /* ===================================================================== */
@@ -252,16 +255,14 @@ async function renderNetbar() {
 }
 
 /* ===================================================================== */
-/*  Écran de bienvenue (premier lancement)                               */
+/*  Écran de connexion (comptes & rôles)                                 */
 /* ===================================================================== */
 
-function maybeShowSplash() {
-  let seen = "1";
-  try { seen = localStorage.getItem("onboarded") || ""; } catch { /* ok */ }
-  if (seen) return;
+function showLogin() {
+  if (el("login")) return;
   const sp = document.createElement("div");
   sp.className = "splash";
-  sp.id = "splash";
+  sp.id = "login";
   sp.innerHTML = `
     <div class="scene" style="color:#9db3c8">
       <div style="position:absolute;right:-12px;bottom:0;width:230px;height:230px">${CRANE}</div>
@@ -270,19 +271,44 @@ function maybeShowSplash() {
     <div class="brand"><img src="/icons/tdmi-logo.svg" alt="TDMI" /></div>
     <div class="grow"></div>
     <h1>Le pointage simple pour des chantiers efficaces</h1>
-    <p class="lead">Suivez les heures de votre équipe en toute simplicité — même sans réseau sur le chantier.</p>
-    <button class="btn block" id="splash-start">Commencer</button>
-    <button class="btn block ghost-dark" id="splash-skip">Découvrir l'application</button>`;
+    <p class="lead">Connectez-vous avec le compte fourni par votre administrateur.</p>
+    <div class="login-card">
+      <label class="f" style="margin-top:0">Adresse du serveur</label>
+      <input id="login-url" placeholder="http://192.168.1.20:3000" value="${esc(store.apiBase)}" />
+      <p class="hint" style="color:#93a7bb">Affichée au démarrage du serveur. Laissez vide si l'application est ouverte depuis le serveur lui-même.</p>
+      <label class="f">Identifiant</label>
+      <input id="login-user" autocomplete="username" autocapitalize="none" />
+      <label class="f">Mot de passe</label>
+      <input id="login-pass" type="password" autocomplete="current-password" />
+      <div id="login-status" class="hint" style="min-height:18px;color:#ffb3b3"></div>
+      <button class="btn block" id="login-btn" style="margin-top:10px">Se connecter</button>
+    </div>`;
   document.body.appendChild(sp);
-  const done = () => {
-    try { localStorage.setItem("onboarded", "1"); } catch { /* ok */ }
-    sp.remove();
+  const status = sp.querySelector("#login-status");
+  const submit = async () => {
+    const btn = sp.querySelector("#login-btn");
+    btn.disabled = true;
+    status.textContent = "";
+    try {
+      const user = await store.login(
+        sp.querySelector("#login-url").value.trim(),
+        sp.querySelector("#login-user").value.trim(),
+        sp.querySelector("#login-pass").value,
+      );
+      sp.remove();
+      await store.refreshReference().catch(() => {});
+      await store.sync().catch(() => {});
+      await reload();
+      toast(`Bienvenue, ${user.displayName}`);
+    } catch (err) {
+      status.textContent = err.message;
+      btn.disabled = false;
+    }
   };
-  sp.querySelector("#splash-start").onclick = () => {
-    done();
-    openSettings();
-  };
-  sp.querySelector("#splash-skip").onclick = done;
+  sp.querySelector("#login-btn").onclick = submit;
+  sp.querySelector("#login-pass").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") submit();
+  });
 }
 
 /* ===================================================================== */
@@ -834,14 +860,17 @@ function renderEquipe() {
                       ${ended ? `<span class="chip neutral">clôturée</span>` : ""}
                     </div>
                   </div>
-                  ${!ended ? `<button class="btn ghost sm" data-rep="${a.id}" ${offline ? "disabled" : ""}>Remplacer</button>` : ""}
+                  ${!ended && store.canManage ? `<button class="btn ghost sm" data-rep="${a.id}" ${offline ? "disabled" : ""}>Remplacer</button>` : ""}
                 </div>`;
               })
               .join("")
       }
     </div>
 
-    <div class="card">
+    ${
+      !store.canManage
+        ? `<div class="card"><p class="muted" style="margin:0">Le planning est géré par le conducteur de travaux ou l'administrateur. Vous pointez le personnel affecté ci-dessus.</p></div>`
+        : `<div class="card">
       <div class="card-head"><h2>Affecter une personne</h2></div>
       ${
         available.length === 0
@@ -853,7 +882,8 @@ function renderEquipe() {
              <button class="btn block" id="pl-add" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Affecter pour la semaine</button>
              ${offline ? `<p class="hint">Le planning nécessite une connexion.</p>` : ""}`
       }
-    </div>`;
+    </div>`
+    }`;
 
   el("pick-site").onclick = openSitePicker;
   el("pl-week").onchange = (ev) => {
@@ -1073,8 +1103,8 @@ function renderRapports() {
     </div>
 
     ${personTable(inRange)}
-    ${costCard(cost, inRange)}
-    ${exportCard()}`;
+    ${store.isAdmin ? costCard(cost, inRange) : ""}
+    ${store.isAdmin ? exportCard() : ""}`;
 
   view().querySelectorAll("#seg-period button").forEach((b) => {
     b.onclick = () => {
@@ -1230,17 +1260,55 @@ function exportCard() {
     </div>`;
 }
 
+/**
+ * Télécharge un PDF via l'API authentifiée (les jetons ne passent pas par
+ * window.open : on récupère le fichier puis on le propose au téléchargement).
+ * Toute erreur s'affiche en toast au lieu d'une page d'erreur.
+ */
+async function downloadPdf(path, filename) {
+  toast("Génération du relevé…");
+  try {
+    const res = await store.authFetch(path);
+    if (!res.ok) {
+      let msg = `Erreur serveur (${res.status})`;
+      try {
+        msg = (await res.json()).error || msg;
+      } catch {
+        /* réponse non JSON */
+      }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    toast("Relevé PDF téléchargé");
+  } catch (err) {
+    const msg = /fetch/i.test(err.message)
+      ? "Serveur injoignable — vérifiez l'adresse dans Réglages"
+      : err.message;
+    toast(msg, "err");
+  }
+}
+
 function bindExports() {
+  const int = el("exp-interim");
+  if (!int) return; // cartes admin absentes pour les autres rôles
   const month = () => el("exp-month").value || monthKey(state.date);
-  const open = (path) => window.open(store.api(path), "_blank");
-  el("exp-interim").onclick = () => {
+  int.onclick = () => {
     const q = new URLSearchParams({ month: month() });
     if (el("exp-agency").value) q.set("agencyId", el("exp-agency").value);
     if (el("exp-chantier").value) q.set("chantierId", el("exp-chantier").value);
     if (el("exp-category").value) q.set("category", el("exp-category").value);
-    open(`/api/reports/interim.pdf?${q}`);
+    downloadPdf(`/api/reports/interim.pdf?${q}`, `releve-interim-${month()}.pdf`);
   };
-  el("exp-salaried").onclick = () => open(`/api/reports/salaried.pdf?month=${month()}`);
+  el("exp-salaried").onclick = () =>
+    downloadPdf(`/api/reports/salaried.pdf?month=${month()}`, `releve-salaries-${month()}.pdf`);
 }
 
 /* ===================================================================== */
@@ -1253,6 +1321,18 @@ function renderProfil() {
   const byType = (t) => workers.filter((w) => w.type === t).length;
 
   view().innerHTML = `
+    <div class="card">
+      <div class="card-head"><h2>Mon compte</h2><span class="chip ${store.role === "ADMIN" ? "ACCIDENT" : store.role === "CONDUCTEUR" ? "INTEMPERIE" : "TRAVAIL"}">${ROLE_LABEL[store.role] || store.role}</span></div>
+      <div class="rowline"><span>Nom</span><strong>${esc(store.userName || "—")}</strong></div>
+      <div class="rowline"><span>Identifiant</span><span class="muted">${esc(store.username || "—")}</span></div>
+      <div class="grid2" style="margin-top:12px">
+        <button class="btn ghost" id="change-pass">Mot de passe</button>
+        <button class="btn ghost" id="logout" style="color:var(--danger)">Se déconnecter</button>
+      </div>
+    </div>
+
+    ${store.isAdmin ? usersCard() : ""}
+
     <div class="card">
       <div class="card-head"><h2>Serveur & synchronisation</h2></div>
       <div class="rowline">
@@ -1287,7 +1367,7 @@ function renderProfil() {
               )
               .join("") + (workers.length > 6 ? `<div class="muted" style="margin-top:8px">+ ${workers.length - 6} autre(s)</div>` : "")
       }
-      <button class="btn block" id="add-worker" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter une personne</button>
+      ${store.canManage ? `<button class="btn block" id="add-worker" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter une personne</button>` : ""}
     </div>
 
     <div class="card">
@@ -1302,7 +1382,7 @@ function renderProfil() {
               )
               .join("")
       }
-      <button class="btn block" id="add-chantier" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter un chantier</button>
+      ${store.canManage ? `<button class="btn block" id="add-chantier" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter un chantier</button>` : ""}
     </div>
 
     <div class="card">
@@ -1312,10 +1392,10 @@ function renderProfil() {
           ? `<div class="empty">Aucune agence.</div>`
           : agencies.map((a) => `<div class="rowline"><span>${esc(a.name)}</span><span class="muted">${esc(a.contact || "")}</span></div>`).join("")
       }
-      <button class="btn block" id="add-agency" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter une agence</button>
+      ${store.canManage ? `<button class="btn block" id="add-agency" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Ajouter une agence</button>` : ""}
     </div>
 
-    <div class="card">
+    ${store.isAdmin ? `<div class="card">
       <div class="card-head"><h2>Coûts par chantier</h2><span class="sub">${costs.length} grille(s)</span></div>
       <p class="muted">Ce que coûte une personne selon le chantier : taux horaire, panier repas, indemnité de déplacement et prix unitaires (heures sup., fériées, intempéries).</p>
       ${costs
@@ -1326,17 +1406,30 @@ function renderProfil() {
         )
         .join("")}
       <button class="btn block" id="add-cost" style="margin-top:12px" ${offline ? "disabled" : ""}>${I.plus} Définir un coût</button>
-    </div>`;
+    </div>` : ""}`;
 
   store.pendingCount().then((n) => {
     const c = el("pending-count");
     if (c) c.textContent = String(n);
   });
   el("open-settings").onclick = openSettings;
-  el("add-worker").onclick = () => openWorkerSheet();
-  el("add-chantier").onclick = () => openChantierSheet();
-  el("add-agency").onclick = () => openAgencySheet();
-  el("add-cost").onclick = () => openCostSheet();
+  el("change-pass").onclick = openPasswordSheet;
+  el("logout").onclick = async () => {
+    await store.logout();
+    toast("Déconnecté");
+  };
+  const bind = (id, fn) => {
+    const n = el(id);
+    if (n) n.onclick = fn;
+  };
+  bind("add-worker", openWorkerSheet);
+  bind("add-chantier", openChantierSheet);
+  bind("add-agency", openAgencySheet);
+  bind("add-cost", openCostSheet);
+  bind("add-user", openUserSheet);
+  view().querySelectorAll("[data-user]").forEach((r) => {
+    r.onclick = () => openUserEditSheet(r.dataset.user);
+  });
 }
 
 /* --------------------------- Feuilles Profil --------------------------- */
@@ -1494,6 +1587,108 @@ function openCostSheet() {
   );
 }
 
+/* ------------------------ Comptes & rôles (admin) ---------------------- */
+
+function usersCard() {
+  const users = state.users || [];
+  return `
+    <div class="card">
+      <div class="card-head"><h2>Comptes & rôles</h2><span class="sub">${users.length} compte(s)</span></div>
+      ${
+        users.length === 0
+          ? `<div class="empty">Liste indisponible hors-ligne.</div>`
+          : users
+              .map(
+                (u) => `<div class="rowline" data-user="${u.id}" style="cursor:pointer">
+                  <div><div style="font-weight:700">${esc(u.displayName)}${u.active ? "" : ` <span class="chip neutral">désactivé</span>`}</div>
+                  <div class="muted">${esc(u.username)}</div></div>
+                  <span class="chip ${u.role === "ADMIN" ? "ACCIDENT" : u.role === "CONDUCTEUR" ? "INTEMPERIE" : "TRAVAIL"}">${ROLE_LABEL[u.role]}</span>
+                </div>`,
+              )
+              .join("")
+      }
+      <button class="btn block" id="add-user" style="margin-top:12px" ${store.online ? "" : "disabled"}>${I.plus} Créer un compte</button>
+      <p class="hint">Chef : pointe son équipe. Conducteur : + planning et référentiel. Admin : + coûts, relevés PDF et comptes.</p>
+    </div>`;
+}
+
+function openUserSheet() {
+  sheet(
+    "Nouveau compte",
+    "L'identifiant et le mot de passe seront communiqués à la personne.",
+    `<div class="grid2">
+       <div><label class="f">Nom affiché</label><input id="u-name" placeholder="Karim Benali" /></div>
+       <div><label class="f">Identifiant</label><input id="u-username" autocapitalize="none" placeholder="kbenali" /></div>
+     </div>
+     <label class="f">Rôle</label>
+     <select id="u-role">${Object.entries(ROLE_LABEL)
+       .map(([k, v]) => `<option value="${k}">${v}</option>`)
+       .join("")}</select>
+     <label class="f">Mot de passe</label>
+     <input id="u-pass" type="text" placeholder="4 caractères minimum" />`,
+    async (ov) => {
+      const r = await store.authFetch("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          displayName: val(ov, "#u-name"),
+          username: val(ov, "#u-username"),
+          role: val(ov, "#u-role"),
+          password: ov.querySelector("#u-pass").value,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Erreur serveur");
+    },
+  );
+}
+
+function openUserEditSheet(userId) {
+  const u = (state.users || []).find((x) => x.id === userId);
+  if (!u) return;
+  sheet(
+    u.displayName,
+    `${u.username} · ${ROLE_LABEL[u.role]}`,
+    `<label class="f">Rôle</label>
+     <select id="ue-role">${Object.entries(ROLE_LABEL)
+       .map(([k, v]) => `<option value="${k}" ${u.role === k ? "selected" : ""}>${v}</option>`)
+       .join("")}</select>
+     <label class="f">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+     <input id="ue-pass" type="text" />
+     <label class="f">Statut du compte</label>
+     <select id="ue-active"><option value="1" ${u.active ? "selected" : ""}>Actif</option><option value="0" ${u.active ? "" : "selected"}>Désactivé</option></select>`,
+    async (ov) => {
+      const body = { role: val(ov, "#ue-role"), active: val(ov, "#ue-active") === "1" };
+      const pass = ov.querySelector("#ue-pass").value;
+      if (pass) body.password = pass;
+      const r = await store.authFetch(`/api/users/${u.id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Erreur serveur");
+    },
+  );
+}
+
+function openPasswordSheet() {
+  sheet(
+    "Changer mon mot de passe",
+    "",
+    `<label class="f">Mot de passe actuel</label>
+     <input id="pw-cur" type="password" autocomplete="current-password" />
+     <label class="f">Nouveau mot de passe</label>
+     <input id="pw-new" type="password" autocomplete="new-password" placeholder="4 caractères minimum" />`,
+    async (ov) => {
+      const r = await store.authFetch("/api/auth/password", {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword: ov.querySelector("#pw-cur").value,
+          newPassword: ov.querySelector("#pw-new").value,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Erreur serveur");
+    },
+  );
+}
+
 /* ----------------------------- Réglages -------------------------------- */
 
 function openSettings() {
@@ -1503,9 +1698,7 @@ function openSettings() {
     <div class="sheet">
       <div class="grab"></div>
       <h3>Réglages</h3>
-      <div class="sheet-sub">TDMI Pointage</div>
-      <label class="f">Votre nom (chef de chantier)</label>
-      <input id="set-user" placeholder="Ex. Karim Benali" value="${esc(store.userName || "")}" />
+      <div class="sheet-sub">Connecté : ${esc(store.userName || "—")} (${esc(ROLE_LABEL[store.role] || "")})</div>
       <label class="f">Adresse du serveur</label>
       <input id="set-url" placeholder="https://pointage.tdmi.fr" value="${esc(store.apiBase)}" />
       <p class="hint">Laissez vide si l'application et le serveur sont à la même adresse (usage web). Sur mobile, indiquez l'URL de votre serveur.</p>
@@ -1523,7 +1716,6 @@ function openSettings() {
   ov.onclick = (ev) => ev.target === ov && close();
 
   ov.querySelector("#save").onclick = async () => {
-    store.setUserName(ov.querySelector("#set-user").value.trim());
     store.setApiBase(ov.querySelector("#set-url").value.trim());
     status.textContent = "Test de connexion…";
     try {
@@ -1582,6 +1774,14 @@ function setTab(tab) {
 async function reload() {
   state.ref = await store.reference();
   state.entries = await store.allEntries();
+  if (store.isAdmin && store.online) {
+    try {
+      const r = await store.authFetch("/api/users");
+      if (r.ok) state.users = await r.json();
+    } catch {
+      /* hors-ligne : on garde la dernière liste */
+    }
+  }
   render();
 }
 
@@ -1593,7 +1793,10 @@ async function main() {
   await store.init();
   await reload();
   store.onChange(reload);
-  maybeShowSplash();
+  store.onAuthChange(() => {
+    if (!store.loggedIn) showLogin();
+  });
+  if (!store.loggedIn) showLogin();
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});

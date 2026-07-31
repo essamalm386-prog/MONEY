@@ -13,7 +13,14 @@ import type {
   TimeEntry,
   Worker,
 } from "../core/types.js";
+import type { Role, SessionUser, User } from "./auth.js";
 import type { DB } from "./db.js";
+
+/** Utilisateur avec secrets (usage interne au serveur uniquement). */
+export interface UserRecord extends User {
+  passwordHash: string;
+  salt: string;
+}
 
 const bool = (v: unknown): boolean => Boolean(v);
 const int = (v: boolean | undefined, dflt = 1): number => (v === undefined ? dflt : v ? 1 : 0);
@@ -105,8 +112,88 @@ function rowToEntry(r: any): TimeEntry {
   };
 }
 
+function rowToUser(r: any): UserRecord {
+  return {
+    id: r.id,
+    username: r.username,
+    displayName: r.displayName,
+    role: r.role as Role,
+    active: bool(r.active),
+    createdAt: r.createdAt,
+    passwordHash: r.passwordHash,
+    salt: r.salt,
+  };
+}
+
+function publicUser(u: UserRecord): User {
+  const { passwordHash: _h, salt: _s, ...pub } = u;
+  return pub;
+}
+
 export class Repository {
   constructor(private readonly db: DB) {}
+
+  // --- Utilisateurs & sessions ---
+  countUsers(): number {
+    return (this.db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
+  }
+  createUser(u: UserRecord): void {
+    this.db
+      .prepare(
+        `INSERT INTO users(id,username,displayName,role,passwordHash,salt,active,createdAt)
+         VALUES(@id,@username,@displayName,@role,@passwordHash,@salt,@active,@createdAt)`,
+      )
+      .run({ ...u, active: int(u.active) });
+  }
+  getUserByUsername(username: string): UserRecord | undefined {
+    const r = this.db.prepare("SELECT * FROM users WHERE username = ?").get(username);
+    return r ? rowToUser(r) : undefined;
+  }
+  getUserById(id: string): UserRecord | undefined {
+    const r = this.db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+    return r ? rowToUser(r) : undefined;
+  }
+  listUsers(): User[] {
+    return this.db
+      .prepare("SELECT * FROM users ORDER BY displayName")
+      .all()
+      .map((r) => publicUser(rowToUser(r)));
+  }
+  updateUser(
+    id: string,
+    patch: Partial<Pick<UserRecord, "displayName" | "role" | "active" | "passwordHash" | "salt">>,
+  ): void {
+    const existing = this.getUserById(id);
+    if (!existing) throw new Error("utilisateur introuvable");
+    const merged = { ...existing, ...patch };
+    this.db
+      .prepare(
+        `UPDATE users SET displayName=@displayName, role=@role, active=@active,
+           passwordHash=@passwordHash, salt=@salt WHERE id=@id`,
+      )
+      .run({ ...merged, active: int(merged.active) });
+  }
+
+  createSession(token: string, userId: string, createdAt: string, expiresAt: string): void {
+    this.db
+      .prepare("INSERT INTO sessions(token,userId,createdAt,expiresAt) VALUES(?,?,?,?)")
+      .run(token, userId, createdAt, expiresAt);
+  }
+  deleteSession(token: string): void {
+    this.db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+  }
+  /** Session valide (non expirée) → utilisateur public + jeton. */
+  getSessionUser(token: string): SessionUser | undefined {
+    const r = this.db
+      .prepare(
+        `SELECT u.*, s.token AS sessToken FROM sessions s
+         JOIN users u ON u.id = s.userId
+         WHERE s.token = ? AND s.expiresAt > ?`,
+      )
+      .get(token, new Date().toISOString()) as any;
+    if (!r) return undefined;
+    return { ...publicUser(rowToUser(r)), token: r.sessToken };
+  }
 
   // --- Agences ---
   upsertAgency(a: Agency): void {

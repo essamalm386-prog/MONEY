@@ -5,11 +5,34 @@
 import { buildTimeEntry, buildWeekAssignment, replaceWorker, type TimeEntryInput } from "../core/index.js";
 import { openDb } from "./db.js";
 import { Repository } from "./repository.js";
+import { hashPassword, type Role } from "./auth.js";
 import { nowISO } from "./ids.js";
 
 const DB_PATH = process.env.DB_PATH ?? "data/pointage.db";
 
 export function seed(repo: Repository): void {
+  // Comptes de démonstration (identifiant = mot de passe) : admin, conducteur, chef.
+  if (repo.countUsers() === 0) {
+    const demoUsers: Array<{ u: string; n: string; r: Role }> = [
+      { u: "admin", n: "Direction TDMI", r: "ADMIN" },
+      { u: "conducteur", n: "Karim Benali", r: "CONDUCTEUR" },
+      { u: "chef", n: "Luc Dupont", r: "CHEF" },
+    ];
+    for (const d of demoUsers) {
+      const { salt, hash } = hashPassword(d.u);
+      repo.createUser({
+        id: `us_${d.u}`,
+        username: d.u,
+        displayName: d.n,
+        role: d.r,
+        passwordHash: hash,
+        salt,
+        active: true,
+        createdAt: nowISO(),
+      });
+    }
+  }
+
   repo.upsertAgency({ id: "ag_demo", name: "Intérim Bâtiment SudEst", contact: "04 90 00 00 00", active: true });
 
   repo.upsertChantier({

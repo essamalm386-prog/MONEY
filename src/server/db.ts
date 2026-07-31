@@ -70,6 +70,25 @@ CREATE TABLE IF NOT EXISTS assignments (
   sync             TEXT NOT NULL DEFAULT 'SYNCED',
   deleted          INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS users (
+  id           TEXT PRIMARY KEY,
+  username     TEXT NOT NULL UNIQUE,
+  displayName  TEXT NOT NULL,
+  role         TEXT NOT NULL CHECK (role IN ('CHEF','CONDUCTEUR','ADMIN')),
+  passwordHash TEXT NOT NULL,
+  salt         TEXT NOT NULL,
+  active       INTEGER NOT NULL DEFAULT 1,
+  createdAt    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token     TEXT PRIMARY KEY,
+  userId    TEXT NOT NULL REFERENCES users(id),
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(userId);
+
 CREATE INDEX IF NOT EXISTS idx_assign_chantier ON assignments(chantierId);
 CREATE INDEX IF NOT EXISTS idx_assign_worker   ON assignments(workerId);
 CREATE INDEX IF NOT EXISTS idx_assign_dates    ON assignments(startDate, endDate);

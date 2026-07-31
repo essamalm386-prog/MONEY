@@ -38,13 +38,16 @@ async function main() {
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
 
-  // Écran de bienvenue : capture puis fermeture.
-  const skip = page.locator("#splash-skip");
-  if (await skip.isVisible().catch(() => false)) {
-    await page.screenshot({ path: join(OUT, "splash.png") });
-    console.log(`✓ Bienvenue → ${join(OUT, "splash.png")}`);
-    await skip.click();
-    await page.waitForTimeout(250);
+  // Écran de connexion : capture puis connexion (compte de démonstration).
+  const loginBtn = page.locator("#login-btn");
+  if (await loginBtn.isVisible().catch(() => false)) {
+    await page.screenshot({ path: join(OUT, "login.png") });
+    console.log(`✓ Connexion → ${join(OUT, "login.png")}`);
+    await page.fill("#login-user", "admin");
+    await page.fill("#login-pass", "admin");
+    await loginBtn.click();
+    await page.waitForFunction(() => !document.getElementById("login"), { timeout: 8000 });
+    await page.waitForTimeout(400);
   }
 
   for (const [tab, label] of TABS) {

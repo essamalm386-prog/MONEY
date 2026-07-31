@@ -30,6 +30,15 @@ import {
 } from "../core/index.js";
 import type { Agency, Chantier, CostRate, TimeEntry, Worker } from "../core/types.js";
 import type { Repository } from "./repository.js";
+import {
+  hashPassword,
+  newToken,
+  requireAuth,
+  requireRole,
+  SESSION_DAYS,
+  verifyPassword,
+  type Role,
+} from "./auth.js";
 import { newId, nowISO } from "./ids.js";
 import { interimBillingPdf, salariedMonthlyPdf } from "./pdf.js";
 import { billingStatements } from "../core/index.js";
@@ -47,18 +56,119 @@ export function createApp(repo: Repository): Express {
 
   const api = express.Router();
 
-  api.get("/health", (_req, res) => res.json({ ok: true, time: nowISO() }));
+  api.get("/health", (_req, res) => res.json({ ok: true, app: "TDMI Pointage", time: nowISO() }));
+
+  // --- Authentification (routes publiques) ---
+  api.post("/auth/login", (req, res) => {
+    const { username, password } = req.body ?? {};
+    if (!username || !password) {
+      return res.status(400).json({ error: "identifiant et mot de passe requis" });
+    }
+    const user = repo.getUserByUsername(String(username).trim().toLowerCase());
+    if (!user || !verifyPassword(String(password), user.salt, user.passwordHash)) {
+      return res.status(401).json({ error: "identifiant ou mot de passe incorrect" });
+    }
+    if (!user.active) return res.status(403).json({ error: "compte désactivé" });
+    const token = newToken();
+    const now = new Date();
+    const expires = new Date(now.getTime() + SESSION_DAYS * 24 * 3600 * 1000);
+    repo.createSession(token, user.id, now.toISOString(), expires.toISOString());
+    res.json({
+      token,
+      user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role },
+    });
+  });
+
+  // Tout le reste de l'API exige une session valide.
+  api.use(requireAuth(repo));
+
+  api.get("/auth/me", (req, res) => {
+    const { id, username, displayName, role } = req.user!;
+    res.json({ id, username, displayName, role });
+  });
+  api.post("/auth/logout", (req, res) => {
+    repo.deleteSession(req.user!.token);
+    res.status(204).end();
+  });
+  api.post("/auth/password", (req, res) => {
+    const { currentPassword, newPassword } = req.body ?? {};
+    if (!newPassword || String(newPassword).length < 4) {
+      return res.status(400).json({ error: "nouveau mot de passe trop court (4 caractères min.)" });
+    }
+    const me = repo.getUserById(req.user!.id)!;
+    if (!verifyPassword(String(currentPassword ?? ""), me.salt, me.passwordHash)) {
+      return res.status(401).json({ error: "mot de passe actuel incorrect" });
+    }
+    const { salt, hash } = hashPassword(String(newPassword));
+    repo.updateUser(me.id, { salt, passwordHash: hash });
+    res.json({ ok: true });
+  });
+
+  // --- Comptes utilisateurs (admin) ---
+  api.get("/users", requireRole("ADMIN"), (_req, res) => res.json(repo.listUsers()));
+  api.post("/users", requireRole("ADMIN"), (req, res) => {
+    const { username, displayName, role, password } = req.body ?? {};
+    if (!username || !displayName || !role || !password) {
+      return res.status(400).json({ error: "username, displayName, role et password requis" });
+    }
+    if (!["CHEF", "CONDUCTEUR", "ADMIN"].includes(role)) {
+      return res.status(400).json({ error: "rôle invalide" });
+    }
+    const uname = String(username).trim().toLowerCase();
+    if (repo.getUserByUsername(uname)) {
+      return res.status(400).json({ error: "cet identifiant existe déjà" });
+    }
+    const { salt, hash } = hashPassword(String(password));
+    const user = {
+      id: newId("us"),
+      username: uname,
+      displayName: String(displayName).trim(),
+      role: role as Role,
+      passwordHash: hash,
+      salt,
+      active: true,
+      createdAt: nowISO(),
+    };
+    repo.createUser(user);
+    const { passwordHash: _h, salt: _s, ...pub } = user;
+    res.status(201).json(pub);
+  });
+  api.put("/users/:id", requireRole("ADMIN"), (req, res) => {
+    const target = repo.getUserById(String(req.params.id));
+    if (!target) return res.status(404).json({ error: "utilisateur introuvable" });
+    const patch: Record<string, unknown> = {};
+    if (req.body.displayName) patch.displayName = String(req.body.displayName).trim();
+    if (req.body.role) {
+      if (!["CHEF", "CONDUCTEUR", "ADMIN"].includes(req.body.role)) {
+        return res.status(400).json({ error: "rôle invalide" });
+      }
+      patch.role = req.body.role;
+    }
+    if (typeof req.body.active === "boolean") {
+      if (target.id === req.user!.id && req.body.active === false) {
+        return res.status(400).json({ error: "impossible de désactiver son propre compte" });
+      }
+      patch.active = req.body.active;
+    }
+    if (req.body.password) {
+      const { salt, hash } = hashPassword(String(req.body.password));
+      patch.salt = salt;
+      patch.passwordHash = hash;
+    }
+    repo.updateUser(target.id, patch);
+    res.json(repo.listUsers().find((u) => u.id === target.id));
+  });
 
   // --- Référentiels ---
   api.get("/agencies", (_req, res) => res.json(repo.listAgencies()));
-  api.post("/agencies", (req, res) => {
+  api.post("/agencies", requireRole("CONDUCTEUR"), (req, res) => {
     const a: Agency = { id: req.body.id || newId("ag"), active: true, ...req.body };
     repo.upsertAgency(a);
     res.status(201).json(a);
   });
 
   api.get("/chantiers", (_req, res) => res.json(repo.listChantiers()));
-  api.post("/chantiers", (req, res) => {
+  api.post("/chantiers", requireRole("CONDUCTEUR"), (req, res) => {
     if (!req.body.code || !req.body.name) {
       return res.status(400).json({ error: "code et name requis" });
     }
@@ -68,7 +178,7 @@ export function createApp(repo: Repository): Express {
   });
 
   api.get("/workers", (_req, res) => res.json(repo.listWorkers()));
-  api.post("/workers", (req, res) => {
+  api.post("/workers", requireRole("CONDUCTEUR"), (req, res) => {
     if (!req.body.firstName || !req.body.lastName || !req.body.type) {
       return res.status(400).json({ error: "firstName, lastName et type requis" });
     }
@@ -87,8 +197,8 @@ export function createApp(repo: Repository): Express {
   });
 
   // --- Grille de coûts (personne × chantier) ---
-  api.get("/costs", (_req, res) => res.json(repo.listCosts()));
-  api.post("/costs", (req, res) => {
+  api.get("/costs", requireRole("ADMIN"), (_req, res) => res.json(repo.listCosts()));
+  api.post("/costs", requireRole("ADMIN"), (req, res) => {
     const { workerId, chantierId } = req.body;
     if (!workerId || !chantierId) {
       return res.status(400).json({ error: "workerId et chantierId requis" });
@@ -122,7 +232,7 @@ export function createApp(repo: Repository): Express {
     }
   });
 
-  api.post("/assignments", (req, res) => {
+  api.post("/assignments", requireRole("CONDUCTEUR"), (req, res) => {
     const { workerId, chantierId, anyDate, assignedBy } = req.body;
     if (!workerId || !chantierId || !anyDate || !assignedBy) {
       return res.status(400).json({ error: "workerId, chantierId, anyDate, assignedBy requis" });
@@ -137,8 +247,8 @@ export function createApp(repo: Repository): Express {
   });
 
   // Remplacement d'une personne en cours de semaine.
-  api.post("/assignments/:id/replace", (req, res) => {
-    const original = repo.getAssignment(req.params.id);
+  api.post("/assignments/:id/replace", requireRole("CONDUCTEUR"), (req, res) => {
+    const original = repo.getAssignment(String(req.params.id));
     if (!original) return res.status(404).json({ error: "affectation introuvable" });
     const { newWorkerId, fromDate, assignedBy, note } = req.body;
     if (!newWorkerId || !fromDate || !assignedBy) {
@@ -226,8 +336,7 @@ export function createApp(repo: Repository): Express {
       workerId: req.query.workerId as string | undefined,
     });
     const workers = repo.listWorkers();
-    const costs = repo.listCosts();
-    res.json({
+    const base = {
       totals: totals(entries),
       byWorker: mapToObject(byWorker(entries)),
       byChantier: mapToObject(byChantier(entries)),
@@ -235,7 +344,12 @@ export function createApp(repo: Repository): Express {
       byAgency: mapToObject(byAgency(entries, workers)),
       weeklyByWorker: weeklyByWorker(entries),
       monthlyDetail: monthlyDetail(entries),
-      // Coûts (vue admin)
+    };
+    // Les coûts et la paie ne sont exposés qu'aux administrateurs.
+    if (req.user!.role !== "ADMIN") return res.json(base);
+    const costs = repo.listCosts();
+    res.json({
+      ...base,
       cost: {
         total: totalCost(entries, workers, costs),
         byWorker: mapToObject(costByWorker(entries, workers, costs)),
@@ -249,7 +363,7 @@ export function createApp(repo: Repository): Express {
   // --- Exports PDF (relevés mensuels) ---
   const MONTH_RE = /^\d{4}-\d{2}$/;
 
-  api.get("/reports/interim.pdf", async (req, res) => {
+  api.get("/reports/interim.pdf", requireRole("ADMIN"), async (req, res) => {
     const month = req.query.month as string | undefined;
     if (!month || !MONTH_RE.test(month)) {
       return res.status(400).json({ error: "paramètre month=YYYY-MM requis" });
@@ -289,7 +403,7 @@ export function createApp(repo: Repository): Express {
     res.send(pdf);
   });
 
-  api.get("/reports/salaried.pdf", async (req, res) => {
+  api.get("/reports/salaried.pdf", requireRole("ADMIN"), async (req, res) => {
     const month = req.query.month as string | undefined;
     if (!month || !MONTH_RE.test(month)) {
       return res.status(400).json({ error: "paramètre month=YYYY-MM requis" });

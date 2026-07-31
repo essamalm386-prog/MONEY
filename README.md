@@ -62,6 +62,49 @@ Le **cœur métier** est isolé de toute dépendance technique : c'est là que v
 « logique derrière » (paie, majorations, intempéries, accidents), et c'est la
 partie la plus densément testée pour garantir la **durabilité**.
 
+## Comptes & rôles
+
+L'application est protégée par des **comptes** (identifiant + mot de passe) :
+
+| Rôle | Droits |
+|---|---|
+| **Chef de chantier** | pointe son équipe, consulte planning et rapports (sans les coûts) |
+| **Conducteur de travaux** | + affectations d'équipes, remplacements, référentiel (personnel, chantiers, agences) |
+| **Administrateur** | + coûts, relevés PDF, **gestion des comptes** (Profil → Comptes & rôles) |
+
+Au premier démarrage, le serveur crée le compte **admin / admin** (affiché dans
+la console) — **changez ce mot de passe immédiatement** puis créez les comptes
+de vos chefs et conducteurs depuis Profil → Comptes & rôles.
+
+## Mise en service dans l'entreprise (quelle adresse de serveur ?)
+
+Le serveur s'installe sur **un ordinateur de l'entreprise** (PC du bureau qui
+reste allumé, ou petit serveur/VPS) :
+
+```bash
+npm install && npm run build && npm start
+```
+
+Au démarrage, le serveur **affiche l'adresse à utiliser**, par exemple :
+
+```
+TDMI Pointage — serveur démarré
+  Sur cet ordinateur : http://localhost:3000
+  Depuis les téléphones du même réseau, saisissez cette adresse
+  dans l'écran de connexion :
+    → http://192.168.1.20:3000
+```
+
+- **Sur les téléphones** (app Android ou navigateur) : saisir cette adresse
+  dans le champ « Adresse du serveur » de l'écran de connexion.
+- **Sur un ordinateur** (partie web, pour les admins) : ouvrir directement
+  `http://192.168.1.20:3000` dans le navigateur — l'interface passe
+  automatiquement en mode bureau avec barre latérale. Le champ adresse peut
+  alors rester vide.
+- Pour un accès **hors du réseau de l'entreprise** (4G), il faut un serveur
+  accessible d'Internet (VPS à ~5 €/mois avec un nom de domaine et HTTPS) —
+  la même commande `npm start` s'y applique.
+
 ## Démarrage
 
 ```bash

@@ -59,17 +59,103 @@ export class Store {
     // on configure l'URL du serveur (ex. https://pointage.tdmi.fr) via l'écran
     // de réglages, persistée dans localStorage.
     this.apiBase = (typeof localStorage !== "undefined" && localStorage.getItem("apiBase")) || "";
-    // Nom du chef de chantier : tracé dans chaque pointage (champ recordedBy).
-    this.userName = (typeof localStorage !== "undefined" && localStorage.getItem("userName")) || "";
+    // Session : jeton + identité + rôle, persistés pour rester connecté
+    // (et pouvoir travailler hors-ligne avec les données locales).
+    const ls = (k) => (typeof localStorage !== "undefined" && localStorage.getItem(k)) || "";
+    this.token = ls("authToken");
+    this.role = ls("authRole");
+    this.userName = ls("userName");
+    this.username = ls("authUsername");
+    this.authListeners = new Set();
+  }
+
+  get loggedIn() {
+    return Boolean(this.token);
+  }
+  get isAdmin() {
+    return this.role === "ADMIN";
+  }
+  get canManage() {
+    return this.role === "ADMIN" || this.role === "CONDUCTEUR";
+  }
+
+  onAuthChange(fn) {
+    this.authListeners.add(fn);
+    return () => this.authListeners.delete(fn);
+  }
+  _emitAuth() {
+    for (const fn of this.authListeners) fn();
+  }
+
+  _saveSession() {
+    try {
+      localStorage.setItem("authToken", this.token || "");
+      localStorage.setItem("authRole", this.role || "");
+      localStorage.setItem("userName", this.userName || "");
+      localStorage.setItem("authUsername", this.username || "");
+    } catch {
+      /* stockage indisponible */
+    }
+  }
+
+  /** Connexion : enregistre l'URL du serveur puis ouvre une session. */
+  async login(base, username, password) {
+    this.setApiBase(base);
+    let res;
+    try {
+      res = await fetch(this.api("/api/auth/login"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+    } catch {
+      throw new Error("Serveur injoignable — vérifiez l'adresse du serveur");
+    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Connexion refusée");
+    this.token = body.token;
+    this.role = body.user.role;
+    this.userName = body.user.displayName;
+    this.username = body.user.username;
+    this._saveSession();
+    this._emitAuth();
+    return body.user;
+  }
+
+  async logout() {
+    try {
+      await this.authFetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      /* le serveur peut être injoignable : on se déconnecte quand même */
+    }
+    this.token = "";
+    this.role = "";
+    this.username = "";
+    this._saveSession();
+    this._emitAuth();
+  }
+
+  /** Session invalide côté serveur : on repasse à l'écran de connexion. */
+  _sessionLost() {
+    this.token = "";
+    this.role = "";
+    this._saveSession();
+    this._emitAuth();
+  }
+
+  /** fetch authentifié : ajoute le jeton, détecte les sessions expirées. */
+  async authFetch(path, opts = {}) {
+    const headers = { ...(opts.headers || {}) };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    if (opts.body && !headers["content-type"]) headers["content-type"] = "application/json";
+    const res = await fetch(this.api(path), { ...opts, headers });
+    if (res.status === 401 && this.token) this._sessionLost();
+    return res;
   }
 
   setUserName(name) {
     this.userName = (name || "").trim();
-    try {
-      localStorage.setItem("userName", this.userName);
-    } catch {
-      /* stockage indisponible */
-    }
+    this._saveSession();
   }
 
   setApiBase(url) {
@@ -107,22 +193,37 @@ export class Store {
 
   // --- Référentiels (cache local + API) ---
   async refreshReference() {
-    if (!this.online) return this._cachedReference();
+    if (!this.online || !this.token) return this._cachedReference();
+    // Chaque liste est tolérante à l'échec (ex. /api/costs renvoie 403 pour un
+    // chef : les coûts sont réservés aux admins) — on garde alors le cache.
+    const load = async (path) => {
+      try {
+        const r = await this.authFetch(path);
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      }
+    };
     const [chantiers, workers, agencies, assignments, costs] = await Promise.all([
-      fetch(this.api("/api/chantiers")).then((r) => r.json()),
-      fetch(this.api("/api/workers")).then((r) => r.json()),
-      fetch(this.api("/api/agencies")).then((r) => r.json()),
-      fetch(this.api("/api/assignments")).then((r) => r.json()),
-      fetch(this.api("/api/costs")).then((r) => r.json()),
+      load("/api/chantiers"),
+      load("/api/workers"),
+      load("/api/agencies"),
+      load("/api/assignments"),
+      load("/api/costs"),
     ]);
+    const cached = await this._cachedReference();
+    const merged = {
+      chantiers: chantiers ?? cached.chantiers,
+      workers: workers ?? cached.workers,
+      agencies: agencies ?? cached.agencies,
+      assignments: assignments ?? cached.assignments,
+      costs: costs ?? cached.costs,
+    };
     await tx(this.db, "ref", "readwrite", (s) => {
-      s.put({ key: "chantiers", value: chantiers });
-      s.put({ key: "workers", value: workers });
-      s.put({ key: "agencies", value: agencies });
-      s.put({ key: "assignments", value: assignments });
-      s.put({ key: "costs", value: costs });
+      for (const [key, value] of Object.entries(merged)) s.put({ key, value });
     });
-    return { chantiers, workers, agencies, assignments, costs };
+    return merged;
   }
 
   async _cachedReference() {
@@ -173,9 +274,8 @@ export class Store {
   }
   async _postRef(url, key, payload) {
     if (!this.online) throw new Error("Connexion requise pour modifier le référentiel");
-    const res = await fetch(this.api(url), {
+    const res = await this.authFetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
@@ -250,15 +350,14 @@ export class Store {
 
   /** Push des pointages locaux non synchronisés, puis pull des nouveautés. */
   async sync() {
-    if (!this.online || this._syncing) return;
+    if (!this.online || !this.token || this._syncing) return;
     this._syncing = true;
     try {
       const all = await this.allEntries();
       const dirty = all.filter((e) => e.sync === "LOCAL");
       if (dirty.length) {
-        const res = await fetch(this.api("/api/sync/push"), {
+        const res = await this.authFetch("/api/sync/push", {
           method: "POST",
-          headers: { "content-type": "application/json" },
           body: JSON.stringify({ entries: dirty }),
         }).then((r) => r.json());
         const acked = new Set([...(res.applied || []), ...(res.conflicts || [])]);
@@ -268,7 +367,7 @@ export class Store {
       }
 
       const since = (await this._meta("lastPull")) || "1970-01-01T00:00:00.000Z";
-      const pull = await fetch(this.api(`/api/sync/pull?since=${encodeURIComponent(since)}`)).then(
+      const pull = await this.authFetch(`/api/sync/pull?since=${encodeURIComponent(since)}`).then(
         (r) => r.json(),
       );
       if (pull.entries && pull.entries.length) {

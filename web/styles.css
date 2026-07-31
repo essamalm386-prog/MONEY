@@ -720,6 +720,28 @@ tr.total td { font-weight: 800; border-top: 2px solid var(--line-2); }
   margin-top: 10px;
 }
 
+/* Formulaire de connexion posé sur le splash */
+.login-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 4px 16px 16px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.login-card label.f { color: #c3d1de; }
+.login-card input {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: transparent;
+}
+.splash { overflow-y: auto; }
+@media (min-width: 560px) {
+  .splash { align-items: center; }
+  .splash .brand, .splash h1, .splash p.lead, .splash .login-card, .splash .btn { width: 100%; max-width: 430px; margin-left: auto; margin-right: auto; }
+  .splash h1, .splash p.lead { max-width: 430px; }
+}
+
 /* --------------------------------- Toast -------------------------------- */
 
 .toast {
@@ -744,3 +766,45 @@ tr.total td { font-weight: 800; border-top: 2px solid var(--line-2); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 .toast.err { background: var(--danger); }
 .toast.ok { background: #128038; }
+
+/* ------------------- Mode bureau (partie web, ≥ 1024 px) ----------------
+   La barre d'onglets devient une barre latérale : les admins utilisent la
+   même application dans un navigateur d'ordinateur, sans téléphone.        */
+@media (min-width: 1024px) {
+  body { padding-bottom: 0; padding-left: 232px; }
+  .tabbar {
+    top: 0;
+    bottom: 0;
+    right: auto;
+    width: 232px;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 22px 14px 0;
+    border-top: none;
+    border-right: 1px solid var(--line);
+  }
+  .tabbar::before {
+    content: "";
+    display: block;
+    height: 54px;
+    margin: 0 6px 18px;
+    background: url("/icons/tdmi-logo.svg") no-repeat left center / contain;
+  }
+  .tabbar button {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 14.5px;
+  }
+  .tabbar button.on { background: var(--orange-l); }
+  .appbar { padding-top: 22px; }
+  main { max-width: 900px; }
+  .action-bar { left: 232px; bottom: 0; padding-bottom: 18px; }
+  .toast { bottom: 30px; left: calc(50% + 116px); }
+  .stat-row.four { grid-template-columns: repeat(4, 1fr); }
+}

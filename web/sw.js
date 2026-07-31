@@ -6,7 +6,7 @@
  *   - Requêtes API : network-first avec repli silencieux (les données métier
  *     vivent dans IndexedDB, gérées par store.js — le SW ne cache pas l'API).
  */
-const CACHE = "tdmi-pointage-v3";
+const CACHE = "tdmi-pointage-v4";
 const SHELL = [
   "/",
   "/index.html",

@@ -56,15 +56,26 @@ async function main() {
   try {
     await waitForServer();
 
+    // Base vierge : le serveur a créé le compte admin/admin au démarrage.
+    const loginRes = await fetch(BASE + "/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "admin", password: "admin" }),
+    });
+    const { token } = await loginRes.json();
+    assert(token, "connexion admin impossible");
+    const authHeaders = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    console.log("✓ Connexion API admin/admin");
+
     // Prépare un chantier et une personne via l'API (référentiel).
     await fetch(BASE + "/api/chantiers", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: authHeaders,
       body: JSON.stringify({ id: "ch_e2e", code: "E2E-01", name: "Chantier E2E", client: "Interne" }),
     });
     await fetch(BASE + "/api/workers", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: authHeaders,
       body: JSON.stringify({
         id: "wk_e2e",
         firstName: "Test",
@@ -79,7 +90,7 @@ async function main() {
     // Affectation de la personne au chantier pour la semaine (conducteur de travaux).
     await fetch(BASE + "/api/assignments", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: authHeaders,
       body: JSON.stringify({ workerId: "wk_e2e", chantierId: "ch_e2e", anyDate: "2026-07-30", assignedBy: "cond_e2e" }),
     });
 
@@ -96,12 +107,14 @@ async function main() {
 
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
 
-    // Écran de bienvenue au premier lancement : on le passe.
-    const skip = page.locator("#splash-skip");
-    if (await skip.isVisible().catch(() => false)) {
-      await skip.click();
-      console.log("✓ Écran de bienvenue affiché puis passé");
-    }
+    // Écran de connexion : identifiants admin (URL vide = même origine).
+    await page.waitForSelector("#login-btn");
+    await page.fill("#login-user", "admin");
+    await page.fill("#login-pass", "admin");
+    await page.click("#login-btn");
+    await page.waitForSelector(".tabbar", { state: "visible" });
+    await page.waitForFunction(() => !document.getElementById("login"), { timeout: 8000 });
+    console.log("✓ Connexion UI admin (écran Se connecter)");
 
     // Onglet Pointage, date connue.
     await page.click('.tabbar button[data-tab="pointage"]');
@@ -143,7 +156,9 @@ async function main() {
 
     // Vérifie la persistance côté serveur (synchro locale → API → SQLite).
     await page.waitForTimeout(700);
-    const entries = await fetch(BASE + "/api/entries?from=2026-07-30&to=2026-07-30").then((r) => r.json());
+    const entries = await fetch(BASE + "/api/entries?from=2026-07-30&to=2026-07-30", {
+      headers: authHeaders,
+    }).then((r) => r.json());
     const mine = entries.filter((e) => e.workerId === "wk_e2e" && !e.deleted);
     assert(mine.length === 1, `1 pointage attendu côté serveur, reçu ${mine.length}`);
     assert(mine[0].minutes === 480, `480 min attendues, reçu ${mine[0].minutes}`);
