@@ -113,6 +113,17 @@ function fmtDateLong(iso) {
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+/** "il y a 5 min" / "hier 17:32" pour la dernière synchro. */
+function fmtSyncTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const mins = Math.round((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) + " " +
+    d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function fmtDayMonth(iso) {
   const [, m, d] = iso.split("-");
   return `${d}/${m}`;
@@ -232,7 +243,7 @@ function renderAppbar() {
         await reload();
         toast("Synchronisé");
       } catch {
-        toast("Synchronisation impossible", "err");
+        toast("Serveur hors de portée — synchronisation automatique au dépôt (Wi-Fi)", "err");
       }
     };
   }
@@ -244,7 +255,11 @@ async function renderNetbar() {
   if (!store.online) {
     bar.hidden = false;
     bar.className = "netbar offline";
-    bar.textContent = `Hors-ligne — la saisie reste possible, synchronisation au retour du réseau${pending ? ` (${pending} en attente)` : ""}.`;
+    bar.textContent = `Hors-ligne — vos pointages sont enregistrés sur le téléphone${pending ? ` (${pending} en attente)` : ""} et partiront automatiquement au dépôt (Wi-Fi).`;
+  } else if (pending > 0 && store.serverReachable === false) {
+    bar.hidden = false;
+    bar.className = "netbar pending";
+    bar.textContent = `${pending} pointage(s) en attente — ils se synchroniseront automatiquement au dépôt (Wi-Fi).`;
   } else if (pending > 0) {
     bar.hidden = false;
     bar.className = "netbar pending";
@@ -273,18 +288,39 @@ function showLogin() {
     <h1>Le pointage simple pour des chantiers efficaces</h1>
     <p class="lead">Connectez-vous avec le compte fourni par votre administrateur.</p>
     <div class="login-card">
-      <label class="f" style="margin-top:0">Adresse du serveur</label>
-      <input id="login-url" placeholder="http://192.168.1.20:3000" value="${esc(store.apiBase)}" />
-      <p class="hint" style="color:#93a7bb">Affichée au démarrage du serveur. Laissez vide si l'application est ouverte depuis le serveur lui-même.</p>
-      <label class="f">Identifiant</label>
+      <label class="f" style="margin-top:0">Identifiant</label>
       <input id="login-user" autocomplete="username" autocapitalize="none" />
       <label class="f">Mot de passe</label>
       <input id="login-pass" type="password" autocomplete="current-password" />
       <div id="login-status" class="hint" style="min-height:18px;color:#ffb3b3"></div>
       <button class="btn block" id="login-btn" style="margin-top:10px">Se connecter</button>
+      <button class="link" id="login-config-toggle" style="display:block;margin:12px auto 0;color:#93a7bb">Configuration du serveur (administrateur)</button>
+      <div id="login-config" hidden>
+        <label class="f">Adresse du serveur</label>
+        <input id="login-url" placeholder="http://192.168.1.20:3000" value="${esc(store.apiBase)}" />
+        <p class="hint" style="color:#93a7bb">Réservé à l'administrateur, à configurer une seule fois par téléphone. L'adresse est affichée au démarrage du serveur.</p>
+      </div>
     </div>`;
   document.body.appendChild(sp);
   const status = sp.querySelector("#login-status");
+  const configBox = sp.querySelector("#login-config");
+  sp.querySelector("#login-config-toggle").onclick = () => {
+    configBox.hidden = !configBox.hidden;
+  };
+
+  // Premier lancement sur ce téléphone : si aucun serveur ne répond, on ouvre
+  // la configuration (sinon le chef n'a que identifiant + mot de passe).
+  store.pingServer().then((ok) => {
+    if (!ok && el("login")) {
+      configBox.hidden = false;
+      if (!status.textContent) {
+        status.textContent = store.apiBase
+          ? "Le serveur configuré ne répond pas — vérifiez l'adresse ci-dessous."
+          : "Première installation : l'administrateur doit renseigner l'adresse du serveur ci-dessous.";
+      }
+    }
+  });
+
   const submit = async () => {
     const btn = sp.querySelector("#login-btn");
     btn.disabled = true;
@@ -302,6 +338,7 @@ function showLogin() {
       toast(`Bienvenue, ${user.displayName}`);
     } catch (err) {
       status.textContent = err.message;
+      if (/injoignable|ne pointe pas/i.test(err.message)) configBox.hidden = false;
       btn.disabled = false;
     }
   };
@@ -1334,14 +1371,19 @@ function renderProfil() {
     ${store.isAdmin ? usersCard() : ""}
 
     <div class="card">
-      <div class="card-head"><h2>Serveur & synchronisation</h2></div>
+      <div class="card-head"><h2>Synchronisation</h2></div>
       <div class="rowline">
         <span>État</span>
-        <strong style="color:${store.online ? "var(--ok)" : "var(--danger)"}">${store.online ? "En ligne" : "Hors-ligne"}</strong>
+        <strong style="color:${!store.online ? "var(--danger)" : store.serverReachable === false ? "var(--warn)" : "var(--ok)"}">
+          ${!store.online ? "Hors-ligne" : store.serverReachable === false ? "Serveur hors de portée" : "Connecté"}
+        </strong>
       </div>
-      <div class="rowline"><span>Adresse</span><span class="muted">${esc(store.apiBase || "même origine")}</span></div>
+      <div class="rowline"><span>Dernière synchronisation</span><span class="muted">${store.lastSyncAt ? esc(fmtSyncTime(store.lastSyncAt)) : "jamais"}</span></div>
       <div class="rowline"><span>Pointages en attente</span><strong id="pending-count">…</strong></div>
-      <button class="btn ghost block" id="open-settings" style="margin-top:12px">${I.gear} Modifier les réglages</button>
+      <p class="hint">La synchronisation est automatique : au dépôt (Wi-Fi), les pointages partent tout seuls.</p>
+      <button class="btn ghost block" id="sync-now" style="margin-top:12px">${I.sync} Synchroniser maintenant</button>
+      ${store.isAdmin ? `<div class="rowline" style="margin-top:6px"><span>Adresse du serveur</span><span class="muted">${esc(store.apiBase || "même origine")}</span></div>
+      <button class="btn ghost block" id="open-settings" style="margin-top:8px">${I.gear} Modifier l'adresse (admin)</button>` : ""}
     </div>
 
     <div class="card">
@@ -1412,7 +1454,17 @@ function renderProfil() {
     const c = el("pending-count");
     if (c) c.textContent = String(n);
   });
-  el("open-settings").onclick = openSettings;
+  const settingsBtn = el("open-settings");
+  if (settingsBtn) settingsBtn.onclick = openSettings;
+  el("sync-now").onclick = async () => {
+    try {
+      await store.sync();
+      await reload();
+      toast("Synchronisé");
+    } catch {
+      toast("Serveur hors de portée — nouvelle tentative automatique au dépôt (Wi-Fi)", "err");
+    }
+  };
   el("change-pass").onclick = openPasswordSheet;
   el("logout").onclick = async () => {
     await store.logout();
@@ -1692,6 +1744,10 @@ function openPasswordSheet() {
 /* ----------------------------- Réglages -------------------------------- */
 
 function openSettings() {
+  if (!store.isAdmin) {
+    toast("Réglages du serveur réservés à l'administrateur", "err");
+    return;
+  }
   const ov = document.createElement("div");
   ov.className = "overlay";
   ov.innerHTML = `

@@ -67,6 +67,10 @@ export class Store {
     this.userName = ls("userName");
     this.username = ls("authUsername");
     this.authListeners = new Set();
+    // État de la synchronisation automatique : le serveur n'est joignable
+    // qu'au dépôt (Wi-Fi) — hors de portée, on réessaie sans déranger le chef.
+    this.serverReachable = null; // null = inconnu, true/false après tentative
+    this.lastSyncAt = ls("lastSyncAt");
   }
 
   get loggedIn() {
@@ -197,8 +201,22 @@ export class Store {
     this.db = await openIDB();
     window.addEventListener("online", () => this._setOnline(true));
     window.addEventListener("offline", () => this._setOnline(false));
+    // Retour au dépôt : rejoindre le Wi-Fi ne déclenche pas toujours
+    // l'événement « online » (le téléphone était déjà en 4G). On synchronise
+    // donc aussi périodiquement et à chaque retour de l'app au premier plan.
+    setInterval(() => this._autoSync(), 60_000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this._autoSync();
+    });
     await this.refreshReference().catch(() => {});
-    this.sync().catch(() => {});
+    this._autoSync();
+  }
+
+  /** Tentative silencieuse : jamais d'erreur affichée au chef. */
+  _autoSync() {
+    this.sync()
+      .then(() => this.refreshReference())
+      .catch(() => {});
   }
 
   onChange(fn) {
@@ -402,9 +420,33 @@ export class Store {
         });
       }
       await this._setMeta("lastPull", pull.serverTime || new Date().toISOString());
-      this._emit();
+      this.serverReachable = true;
+      this.lastSyncAt = new Date().toISOString();
+      try {
+        localStorage.setItem("lastSyncAt", this.lastSyncAt);
+      } catch {
+        /* stockage indisponible */
+      }
+    } catch (err) {
+      // Hors de portée du serveur (4G sur chantier, serveur éteint…) :
+      // les pointages restent en attente, on réessaiera automatiquement.
+      this.serverReachable = false;
+      throw err;
     } finally {
       this._syncing = false;
+      this._emit();
+    }
+  }
+
+  /** Le serveur configuré répond-il comme un serveur TDMI Pointage ? */
+  async pingServer(base = this.apiBase) {
+    try {
+      const url = (base || "").replace(/\/$/, "") + "/api/health";
+      const r = await fetch(url);
+      const j = await r.json().catch(() => null);
+      return Boolean(j && j.ok === true);
+    } catch {
+      return false;
     }
   }
 
