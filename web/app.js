@@ -324,7 +324,8 @@ function showLogin() {
   const submit = async () => {
     const btn = sp.querySelector("#login-btn");
     btn.disabled = true;
-    status.textContent = "";
+    status.style.color = "#9fc1e0";
+    status.textContent = "Connexion au serveur…";
     try {
       const user = await store.login(
         sp.querySelector("#login-url").value.trim(),
@@ -337,6 +338,7 @@ function showLogin() {
       await reload();
       toast(`Bienvenue, ${user.displayName}`);
     } catch (err) {
+      status.style.color = "#ffb3b3";
       status.textContent = err.message;
       if (/injoignable|ne pointe pas/i.test(err.message)) configBox.hidden = false;
       btn.disabled = false;

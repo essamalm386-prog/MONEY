@@ -111,10 +111,14 @@ export class Store {
     // répondre « 200 » avec du HTML et provoquer des erreurs incompréhensibles.
     let health = null;
     try {
-      const h = await fetch(this.api("/api/health"));
+      const h = await this._fetchTimeout(this.api("/api/health"));
       health = await h.json().catch(() => null);
     } catch {
-      throw new Error("Serveur injoignable — vérifiez l'adresse du serveur");
+      throw new Error(
+        "Serveur injoignable à cette adresse. Vérifiez que le serveur est démarré, " +
+          "que le téléphone est sur le même réseau Wi-Fi, et que l'adresse est celle " +
+          "affichée au démarrage du serveur.",
+      );
     }
     if (!health || health.ok !== true) {
       throw new Error(
@@ -125,7 +129,7 @@ export class Store {
 
     let res;
     try {
-      res = await fetch(this.api("/api/auth/login"), {
+      res = await this._fetchTimeout(this.api("/api/auth/login"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -438,11 +442,18 @@ export class Store {
     }
   }
 
+  /** fetch avec délai maximal : une adresse injoignable répond en ~6 s, pas 30. */
+  _fetchTimeout(url, opts = {}, ms = 6000) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(timer));
+  }
+
   /** Le serveur configuré répond-il comme un serveur TDMI Pointage ? */
   async pingServer(base = this.apiBase) {
     try {
       const url = (base || "").replace(/\/$/, "") + "/api/health";
-      const r = await fetch(url);
+      const r = await this._fetchTimeout(url);
       const j = await r.json().catch(() => null);
       return Boolean(j && j.ok === true);
     } catch {
