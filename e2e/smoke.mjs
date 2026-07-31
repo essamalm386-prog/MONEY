@@ -98,7 +98,9 @@ async function main() {
       executablePath: resolveChromium(),
       args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
     });
-    const page = await browser.newPage();
+    // Format téléphone : c'est le parcours du chef de chantier sur le terrain
+    // (au-delà de 1024 px l'application bascule en mode bureau, testé plus bas).
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];
     page.on("pageerror", (e) => errors.push("pageerror: " + String(e)));
     page.on("console", (m) => {
@@ -175,8 +177,30 @@ async function main() {
     assert(costTotal.includes("178"), `coût total = ${costTotal}, attendu ~178 €`);
     console.log("✓ Rapports : coût estimé correct (178 €)");
 
+    // --- Mode bureau : tableau de pointage éditable au clavier ---
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await page.click('.tabbar button[data-tab="pointage"]');
+    await page.waitForSelector(".grid-table table", { state: "visible" });
+    const touchVisible = await page.locator(".touch-list").isVisible();
+    assert(!touchVisible, "la liste tactile devrait être masquée en mode bureau");
+    console.log("✓ Mode bureau : tableau éditable affiché, liste tactile masquée");
+
+    await page.fill('[data-row="wk_e2e"] [data-f="start"]', "08:00");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(300);
+    await page.fill('[data-row="wk_e2e"] [data-f="end"]', "18:00");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(400);
+    await page.fill('[data-row="wk_e2e"] [data-f="break"]', "60");
+    await page.keyboard.press("Tab");
+    await page.waitForFunction(
+      () => document.querySelector('[data-row="wk_e2e"] .h-cell')?.textContent.includes("9h00"),
+      { timeout: 10000 },
+    );
+    console.log("✓ Mode bureau : saisie clavier arrivée/arrêt/pause = 9h00");
+
     assert(errors.length === 0, `erreurs JS dans la page: ${errors.join(" | ")}`);
-    console.log("\n✅ E2E OK — parcours complet validé (UI → IndexedDB → API → SQLite → rapports)");
+    console.log("\n✅ E2E OK — parcours complet validé (mobile + bureau, UI → IndexedDB → API → SQLite → rapports)");
   } finally {
     if (browser) await browser.close();
     server.kill("SIGTERM");

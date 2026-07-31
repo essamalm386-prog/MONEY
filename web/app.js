@@ -37,6 +37,10 @@ const TYPE_LABEL = {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Mode bureau : à partir de 1024 px, l'interface devient un vrai poste PC. */
+const DESKTOP_MQ = window.matchMedia("(min-width: 1024px)");
+const isDesktop = () => DESKTOP_MQ.matches;
+
 const state = {
   tab: "accueil",
   date: today(),
@@ -247,6 +251,35 @@ function renderAppbar() {
       }
     };
   }
+}
+
+/** Bloc utilisateur en bas de la barre latérale (mode bureau). */
+async function renderSideUser() {
+  const box = el("side-user");
+  if (!box) return;
+  if (!isDesktop() || !store.loggedIn) {
+    box.hidden = true;
+    return;
+  }
+  const pending = await store.pendingCount();
+  const cls = !store.online ? "off" : pending > 0 ? "wait" : "";
+  const label = !store.online
+    ? "Hors-ligne"
+    : pending > 0
+      ? `${pending} en attente`
+      : store.lastSyncAt
+        ? `Synchro ${fmtSyncTime(store.lastSyncAt)}`
+        : "Connecté";
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="u-name">${esc(store.userName || "—")}</div>
+    <div class="u-role">${esc(ROLE_LABEL[store.role] || "")}</div>
+    <div class="u-sync ${cls}"><span class="dot"></span>${esc(label)}</div>
+    <button id="side-logout">Se déconnecter</button>`;
+  el("side-logout").onclick = async () => {
+    await store.logout();
+    toast("Déconnecté");
+  };
 }
 
 async function renderNetbar() {
@@ -525,12 +558,12 @@ function renderPointage() {
   view().innerHTML = `
     ${siteCardHtml(ch?.code || "Chantier", ch ? ch.name : "Aucun chantier", capitalize(fmtDateLong(state.date)))}
 
-    <div class="card tight">
+    <div class="card tight wide filterbar">
       <label class="f" style="margin-top:0">Date du pointage</label>
       <input type="date" id="f-date" value="${state.date}" />
     </div>
 
-    <div class="card">
+    <div class="card wide">
       <div class="card-head">
         <div>
           <h2>Équipe (${team.length})</h2>
@@ -545,7 +578,8 @@ function renderPointage() {
         team.length === 0
           ? `<div class="empty">Aucune personne affectée à ce chantier ce jour.<br/>
              Affectez l'équipe dans l'onglet <strong>Équipe</strong>, ou « Tous » pour un ajout exceptionnel.</div>`
-          : team.map((w) => personRow(w, byWorker.get(w.id), assigned.has(w.id))).join("")
+          : `<div class="touch-list">${team.map((w) => personRow(w, byWorker.get(w.id), assigned.has(w.id))).join("")}</div>
+             ${deskTable(team, byWorker, assigned)}`
       }
     </div>
     <div style="height:58px"></div>
@@ -583,6 +617,137 @@ function renderPointage() {
       openEntrySheet(b.dataset.detail);
     };
   });
+
+  // Tableau bureau : enregistrement à la sortie de chaque champ.
+  view().querySelectorAll("[data-row]").forEach((tr) => {
+    const workerId = tr.dataset.row;
+    tr.querySelectorAll("[data-f]").forEach((input) => {
+      input.onchange = () => saveDeskRow(workerId, input.dataset.f, tr);
+    });
+    const del = tr.querySelector("[data-del]");
+    if (del) {
+      del.onclick = async () => {
+        const e = entriesForDate(state.date, state.chantierId).find((x) => x.workerId === workerId);
+        if (!e) return openEntrySheet(workerId);
+        await store.deleteEntry(e.id);
+        await reload();
+        toast("Pointage supprimé");
+      };
+    }
+  });
+}
+
+/**
+ * Tableau de pointage éditable — mode bureau.
+ * Une ligne par personne, saisie au clavier (Tab entre les champs) :
+ * arrivée, arrêt, pause, ou total d'heures direct, plus la nature du jour.
+ */
+function deskTable(team, byWorker, assigned) {
+  const rows = team
+    .map((w) => {
+      const e = byWorker.get(w.id);
+      const kind = e?.kind || "TRAVAIL";
+      const work = kind === "TRAVAIL" || kind === "ACCIDENT";
+      const hours = e && work ? minutesToHours(e.minutes) : "";
+      return `
+      <tr data-row="${w.id}">
+        <td>
+          <div class="who-cell">${avatarFor(w)}
+            <div><div class="nm">${esc(w.firstName)} ${esc(w.lastName)}</div>
+            <div class="tr">${esc(w.trade || "")}${!assigned.has(w.id) ? " · hors équipe" : ""}</div></div>
+          </div>
+        </td>
+        <td><span class="chip ${w.type}">${TYPE_LABEL[w.type]}</span></td>
+        <td><input type="time" data-f="start" value="${e?.startTime || ""}" ${work ? "" : "disabled"} /></td>
+        <td><input type="time" data-f="end" value="${e?.endTime || ""}" ${work ? "" : "disabled"} /></td>
+        <td><input type="number" data-f="break" min="0" step="5" value="${e?.breakMinutes ?? ""}" placeholder="0" ${work ? "" : "disabled"} /></td>
+        <td><input type="number" data-f="hours" min="0" max="13" step="0.25" value="${hours}" placeholder="—" ${work ? "" : "disabled"} /></td>
+        <td class="num h-cell ${e && e.minutes ? "" : "zero"}">${e ? fmtHM(e.minutes) : "0h00"}</td>
+        <td>
+          <select data-f="kind">
+            ${["TRAVAIL", "INTEMPERIE", "ABSENCE", "ACCIDENT"]
+              .map((k) => `<option value="${k}" ${k === kind ? "selected" : ""}>${KIND_LABEL[k]}</option>`)
+              .join("")}
+          </select>
+        </td>
+        <td class="num">
+          <button class="row-del" data-del="${w.id}" title="${e ? "Supprimer le pointage" : "Détails"}">${e ? "✕" : "⋯"}</button>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  const total = team.reduce((s, w) => {
+    const e = byWorker.get(w.id);
+    return s + (e && (e.kind === "TRAVAIL" || e.kind === "ACCIDENT") ? e.minutes : 0);
+  }, 0);
+
+  return `
+    <div class="grid-table">
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Personne</th><th>Statut</th><th>Arrivée</th><th>Arrêt</th>
+            <th>Pause (min)</th><th>Total h</th><th class="num">Heures</th><th>Nature</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr class="total-row">
+            <td colspan="6">Total de la journée — ${team.length} personne(s)</td>
+            <td class="num">${fmtHM(total)}</td><td></td><td></td>
+          </tr></tfoot>
+        </table>
+      </div>
+      <p class="hint">Saisissez les horaires <strong>ou</strong> directement le total d'heures. Passez d'un champ à l'autre avec la touche Tab.</p>
+    </div>`;
+}
+
+/** Enregistre une ligne du tableau bureau après modification d'un champ. */
+async function saveDeskRow(workerId, field, tr) {
+  const existing = entriesForDate(state.date, state.chantierId).find((e) => e.workerId === workerId);
+  const get = (f) => tr.querySelector(`[data-f="${f}"]`);
+  const kind = get("kind").value;
+
+  const base = {
+    id: existing?.id,
+    workerId,
+    chantierId: state.chantierId,
+    date: state.date,
+    kind,
+    recordedBy: store.userName || "chef",
+  };
+
+  try {
+    if (kind === "ABSENCE") {
+      await store.saveEntry({ ...base, minutes: 0, absenceReason: existing?.absenceReason || "AUTRE" });
+    } else if (kind === "INTEMPERIE" || kind === "ACCIDENT") {
+      // Ces natures demandent un motif / une gravité : on ouvre le détail.
+      await reload();
+      openEntrySheet(workerId);
+      return;
+    } else {
+      const start = get("start").value;
+      const end = get("end").value;
+      const brk = Number(get("break").value || 0);
+      const hoursField = get("hours").value;
+      let minutes;
+      if (field === "hours" && hoursField !== "") {
+        minutes = Math.round(Number(hoursField) * 60);
+        if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("Heures invalides");
+        if (minutes > 13 * 60) throw new Error("Durée journalière irréaliste (plus de 13 h)");
+        await store.saveEntry({ ...base, minutes, startTime: undefined, endTime: undefined, breakMinutes: undefined });
+        await reload();
+        return;
+      }
+      if (!start || !end) return; // saisie incomplète : on attend l'autre horaire
+      minutes = workedMinutes(start, end, brk);
+      if (minutes <= 0) throw new Error("La durée doit être supérieure à zéro");
+      await store.saveEntry({ ...base, minutes, startTime: start, endTime: end, breakMinutes: brk });
+    }
+    await reload();
+  } catch (err) {
+    toast(err.message, "err");
+    await reload();
+  }
 }
 
 function personRow(w, e, isAssigned) {
@@ -912,13 +1077,13 @@ function renderEquipe() {
       `${isoWeekKey(state.planWeek).replace(/^\d+-W/, "Semaine ")} · ${fmtDayMonth(from)} → ${fmtDayMonth(to)}`,
     )}
 
-    <div class="card tight">
+    <div class="card tight wide filterbar">
       <label class="f" style="margin-top:0">Semaine (choisir un jour)</label>
       <input type="date" id="pl-week" value="${state.planWeek}" />
       <p class="hint">Le conducteur de travaux compose l'équipe pour la semaine. Les chefs ne pointent que le personnel affecté.</p>
     </div>
 
-    <div class="card">
+    <div class="card wide">
       <div class="card-head">
         <div><h2>Équipe affectée</h2><div class="sub">${activeIds.size} active(s) · ${weekAsg.length} ligne(s)</div></div>
       </div>
@@ -1116,7 +1281,7 @@ function renderRapports() {
   const nbWeather = inRange.filter((e) => e.kind === "INTEMPERIE").length;
 
   view().innerHTML = `
-    <div class="card tight">
+    <div class="card tight wide filterbar">
       <div class="seg" id="seg-period">
         ${[["jour", "Jour"], ["semaine", "Semaine"], ["mois", "Mois"]]
           .map(([k, v]) => `<button data-p="${k}" class="${state.period === k ? "on" : ""}">${v}</button>`)
@@ -1127,7 +1292,7 @@ function renderRapports() {
       <p class="hint">${esc(label)}</p>
     </div>
 
-    <div class="card">
+    <div class="card wide">
       <div class="card-head" style="margin-bottom:6px"><h2>Heures totales</h2></div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div id="rp-total-hours" style="font-size:33px;font-weight:800;letter-spacing:-0.035em">${fmtHM(t.workedMinutes)}</div>
@@ -1261,7 +1426,7 @@ function personTable(entries) {
   if (!rows.length) return "";
   const showOt = state.period === "semaine";
   return `
-    <div class="card">
+    <div class="card wide">
       <div class="card-head"><h2>Par personne</h2>${showOt ? `<span class="sub">avec heures sup.</span>` : ""}</div>
       <div class="table-scroll">
         <table>
@@ -1297,7 +1462,7 @@ function costCard(cost, entries) {
     perCh.set(e.chantierId, (perCh.get(e.chantierId) || 0) + c.total);
   }
   return `
-    <div class="card">
+    <div class="card wide">
       <div class="card-head"><h2>Coût estimé</h2><span class="sub">vue admin</span></div>
       <div id="rp-total-cost" style="font-size:28px;font-weight:800;letter-spacing:-0.03em;margin-bottom:12px">${fmtEur(cost.total)}</div>
       <div class="stat-row four">
@@ -1728,7 +1893,7 @@ function openCostSheet() {
 function usersCard() {
   const users = state.users || [];
   return `
-    <div class="card">
+    <div class="card wide">
       <div class="card-head"><h2>Comptes & rôles</h2><span class="sub">${users.length} compte(s)</span></div>
       ${
         users.length === 0
@@ -1918,6 +2083,7 @@ function render() {
   renderAppbar();
   (VIEWS[state.tab] || renderAccueil)();
   renderNetbar();
+  renderSideUser();
 }
 
 function setTab(tab) {
@@ -1925,6 +2091,36 @@ function setTab(tab) {
   document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
   window.scrollTo(0, 0);
   render();
+}
+
+/** L'utilisateur est-il en train de saisir dans le tableau bureau ? */
+function isEditingDeskTable() {
+  const a = document.activeElement;
+  return Boolean(a && a.closest && a.closest(".grid-table"));
+}
+
+/**
+ * Met à jour les heures calculées et le total sans reconstruire le tableau :
+ * indispensable pour que la tabulation d'un champ à l'autre ne soit pas
+ * interrompue par un réaffichage.
+ */
+function patchDeskTotals() {
+  const dayEntries = entriesForDate(state.date, state.chantierId);
+  const byWorker = new Map(dayEntries.map((e) => [e.workerId, e]));
+  let total = 0;
+  document.querySelectorAll("[data-row]").forEach((tr) => {
+    const e = byWorker.get(tr.dataset.row);
+    const cell = tr.querySelector(".h-cell");
+    if (cell) {
+      cell.textContent = e ? fmtHM(e.minutes) : "0h00";
+      cell.classList.toggle("zero", !(e && e.minutes));
+    }
+    if (e && (e.kind === "TRAVAIL" || e.kind === "ACCIDENT")) total += e.minutes;
+  });
+  const foot = document.querySelector(".total-row .num");
+  if (foot) foot.textContent = fmtHM(total);
+  const finish = el("finish");
+  if (finish) finish.innerHTML = `${I.check} Enregistrer (${fmtHM(total)})`;
 }
 
 async function reload() {
@@ -1938,6 +2134,10 @@ async function reload() {
       /* hors-ligne : on garde la dernière liste */
     }
   }
+  if (isEditingDeskTable()) {
+    patchDeskTotals();
+    return;
+  }
   render();
 }
 
@@ -1945,6 +2145,8 @@ async function main() {
   document.querySelectorAll(".tabbar button").forEach((b) => {
     b.onclick = () => setTab(b.dataset.tab);
   });
+
+  DESKTOP_MQ.addEventListener("change", () => render());
 
   await store.init();
   await reload();

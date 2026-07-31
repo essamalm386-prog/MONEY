@@ -770,26 +770,38 @@ tr.total td { font-weight: 800; border-top: 2px solid var(--line-2); }
 /* ------------------- Mode bureau (partie web, ≥ 1024 px) ----------------
    La barre d'onglets devient une barre latérale : les admins utilisent la
    même application dans un navigateur d'ordinateur, sans téléphone.        */
+/* ======================= Mode bureau (poste de travail) =================
+   À partir de 1024 px, l'application devient une vraie interface PC :
+   barre latérale complète, pleine largeur, cartes en colonnes, tableaux
+   denses et saisie du pointage au clavier (tableau éditable).            */
+
 @media (min-width: 1024px) {
-  body { padding-bottom: 0; padding-left: 232px; }
+  :root { --side-w: 248px; }
+
+  body { padding-bottom: 0; padding-left: var(--side-w); }
+
+  /* --- Barre latérale --- */
   .tabbar {
     top: 0;
     bottom: 0;
     right: auto;
-    width: 232px;
+    width: var(--side-w);
     height: 100vh;
     flex-direction: column;
     justify-content: flex-start;
-    gap: 4px;
-    padding: 22px 14px 0;
+    gap: 3px;
+    padding: 20px 14px 14px;
     border-top: none;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid var(--line-2);
+    box-shadow: none;
+    background: #fff;
   }
   .tabbar::before {
     content: "";
     display: block;
-    height: 54px;
-    margin: 0 6px 18px;
+    height: 46px;
+    margin: 0 6px 20px;
+    flex: none;
     background: url("/icons/tdmi-logo.svg") no-repeat left center / contain;
   }
   .tabbar button {
@@ -797,14 +809,163 @@ tr.total td { font-weight: 800; border-top: 2px solid var(--line-2); }
     flex-direction: row;
     justify-content: flex-start;
     gap: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
+    padding: 11px 14px;
+    border-radius: 10px;
     font-size: 14.5px;
+    font-weight: 600;
   }
-  .tabbar button.on { background: var(--orange-l); }
-  .appbar { padding-top: 22px; }
-  main { max-width: 900px; }
-  .action-bar { left: 232px; bottom: 0; padding-bottom: 18px; }
-  .toast { bottom: 30px; left: calc(50% + 116px); }
+  .tabbar button:hover { background: #f6f7f9; color: var(--ink); }
+  .tabbar button.on { background: var(--orange-l); color: var(--orange-d); font-weight: 700; }
+  .tabbar button.on::before { display: none; }
+
+  /* Bloc utilisateur en bas de la barre latérale */
+  .side-user {
+    display: block;
+    margin-top: auto;
+    padding: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .side-user .u-name { font-weight: 700; letter-spacing: -0.01em; }
+  .side-user .u-role { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .side-user .u-sync { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); margin-bottom: 10px; }
+  .side-user .u-sync .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+  .side-user .u-sync.off .dot { background: var(--danger); }
+  .side-user .u-sync.wait .dot { background: var(--warn); }
+  .side-user button {
+    width: 100%;
+    border: 1px solid var(--line-2);
+    background: #fff;
+    border-radius: 9px;
+    padding: 7px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .side-user button:hover { background: #f6f7f9; color: var(--danger); }
+
+  /* --- En-tête de page --- */
+  .appbar {
+    padding: 22px 32px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 18px;
+  }
+  .appbar .title { text-align: left; font-size: 22px; font-weight: 800; }
+  .appbar .hello .name { font-size: 23px; }
+  /* Le bouton retour n'a pas de sens avec une barre latérale */
+  .appbar #hdr-back { display: none; }
+  .netbar { margin: 0 32px 14px; }
+
+  /* --- Contenu : pleine largeur, deux colonnes --- */
+  main {
+    max-width: none;
+    padding: 0 32px 40px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 18px;
+    align-items: start;
+  }
+  main > * { min-width: 0; }
+  .card { margin-bottom: 18px; padding: 20px; }
+  .card-head h2 { font-size: 17px; }
+
+  /* Cartes larges (tableaux, graphiques) : toute la largeur */
+  .card.wide { grid-column: 1 / -1; }
+
+  .site-card { grid-column: 1 / -1; padding: 22px 26px; }
+  .site-card .name { font-size: 22px; }
+
+  /* --- Densité des tableaux --- */
+  table { font-size: 13.5px; }
+  th, td { padding: 11px 12px; }
+  .table-scroll { margin: 0; }
+
   .stat-row.four { grid-template-columns: repeat(4, 1fr); }
+  .stat .v { font-size: 25px; }
+
+  /* --- Divers --- */
+  .action-bar {
+    left: var(--side-w);
+    bottom: 0;
+    padding: 14px 32px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+  }
+  .action-bar .inner { max-width: none; display: flex; justify-content: flex-end; }
+  .action-bar .btn.block { width: auto; min-width: 260px; }
+  .toast { bottom: 28px; left: calc(50% + var(--side-w) / 2); }
+  .overlay { padding-left: var(--side-w); }
+  body { padding-bottom: 0; }
+}
+
+/* Deux colonnes sur écran large */
+@media (min-width: 1280px) {
+  main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Trois colonnes sur très grand écran, cartes larges sur deux tiers */
+@media (min-width: 1720px) {
+  main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Barres de filtres : bandeau horizontal compact en mode bureau */
+@media (min-width: 1024px) {
+  .filterbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 14px 20px;
+  }
+  .filterbar label.f { margin: 0; white-space: nowrap; }
+  .filterbar input[type="date"] { width: 190px; }
+  .filterbar .seg { flex: none; }
+  .filterbar .hint { margin: 0; margin-left: auto; }
+}
+
+/* ---------- Tableau de pointage éditable (bureau uniquement) ---------- */
+.grid-table { display: none; }
+@media (min-width: 1024px) {
+  .grid-table { display: block; }
+  /* En mode bureau, la liste tactile laisse place au tableau clavier */
+  .touch-list { display: none; }
+
+  .grid-table table { width: 100%; }
+  .grid-table th { position: sticky; top: 0; background: #fff; z-index: 1; }
+  .grid-table td { vertical-align: middle; }
+  .grid-table tr:hover td { background: #fafbfc; }
+  .grid-table .who-cell { display: flex; align-items: center; gap: 10px; }
+  .grid-table .who-cell .avatar { width: 34px; height: 34px; }
+  .grid-table .nm { font-weight: 700; }
+  .grid-table .tr { color: var(--muted); font-size: 12px; }
+  .grid-table input,
+  .grid-table select {
+    padding: 7px 9px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border-radius: 8px;
+  }
+  /* Assez large pour les formats 24 h et AM/PM selon la langue du poste. */
+  .grid-table input[type="time"] { width: 130px; }
+  .grid-table input[type="number"] { width: 86px; }
+  .grid-table select { width: 138px; }
+  .grid-table .h-cell { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 15px; }
+  .grid-table .h-cell.zero { color: var(--danger); }
+  .grid-table .row-del {
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 15px;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  .grid-table .row-del:hover { background: var(--danger-bg); color: var(--danger); }
+  .grid-table tr.total-row td {
+    border-top: 2px solid var(--line-2);
+    font-weight: 800;
+    background: #fbfcfd;
+  }
 }

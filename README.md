@@ -109,9 +109,13 @@ TDMI Pointage — serveur démarré
 - **Sur les téléphones** (app Android ou navigateur) : saisir cette adresse
   dans le champ « Adresse du serveur » de l'écran de connexion.
 - **Sur un ordinateur** (partie web, pour les admins) : ouvrir directement
-  `http://192.168.1.20:3000` dans le navigateur — l'interface passe
-  automatiquement en mode bureau avec barre latérale. Le champ adresse peut
-  alors rester vide.
+  `http://192.168.1.20:3000` dans le navigateur. L'interface bascule
+  automatiquement en **mode poste de travail** : barre latérale de navigation
+  avec le compte connecté, pleine largeur, tableaux de bord sur plusieurs
+  colonnes, tableaux denses, et surtout un **tableau de pointage éditable au
+  clavier** (arrivée, arrêt, pause ou total d'heures, en tabulant d'un champ à
+  l'autre) — beaucoup plus rapide que la saisie tactile pour rattraper une
+  semaine entière. Le champ adresse peut rester vide.
 - Pour un accès **hors du réseau de l'entreprise** (4G), il faut un serveur
   accessible d'Internet (VPS à ~5 €/mois avec un nom de domaine et HTTPS) —
   la même commande `npm start` s'y applique.
