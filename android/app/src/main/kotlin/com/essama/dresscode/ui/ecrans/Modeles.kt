@@ -113,7 +113,7 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
             items(modeles, key = { it.id }) { modele ->
                 CarteModele(
                     modele = modele,
-                    dossier = modeleVue.depot.photos.fichier("").parentFile?.absolutePath,
+                    fichierPhoto = modele.photo?.let { modeleVue.depot.photos.fichier(it) },
                     choisi = modele.id in selection,
                     enSelection = selection.isNotEmpty(),
                     surAppui = {
@@ -142,7 +142,7 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
 @Composable
 private fun CarteModele(
     modele: ModeleCatalogue,
-    dossier: String?,
+    fichierPhoto: java.io.File?,
     choisi: Boolean,
     enSelection: Boolean,
     surAppui: () -> Unit,
@@ -156,10 +156,9 @@ private fun CarteModele(
         verticalArrangement = Arrangement.spacedBy(Espace.deux),
     ) {
         Box {
-            val chemin = modele.photo?.let { "$dossier/$it" }
-            if (chemin != null) {
+            if (fichierPhoto != null) {
                 AsyncImage(
-                    model = chemin,
+                    model = fichierPhoto,
                     contentDescription = modele.nom,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -46,6 +47,10 @@ object Taille {
     val illustration = 48.sp
 }
 
+/* variationSettings est encore marque experimental : c'est
+   pourtant la seule facon de piloter les quatre axes, et la
+   charte les exige. */
+@OptIn(ExperimentalTextApi::class)
 @Composable
 private fun familleSymboles(
     taille: TextUnit,

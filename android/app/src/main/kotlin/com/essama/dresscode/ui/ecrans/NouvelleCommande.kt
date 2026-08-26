@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -29,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -83,8 +83,8 @@ fun EcranNouvelleCommande(
     var nouveauTelephone by remember { mutableStateOf("") }
     var recherche by remember { mutableStateOf("") }
 
-    var mesures by remember(client) {
-        mutableStateOf(client?.mesures?.mapValues { it.value } ?: emptyMap())
+    var mesures: Map<Mesure, String> by remember(client) {
+        mutableStateOf(client?.mesures.orEmpty())
     }
     var mesuresEtendues by remember { mutableStateOf(false) }
 
@@ -441,7 +441,7 @@ private fun Etape(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
         border = androidx.compose.foundation.BorderStroke(
-            1.dp(),
+            1.dp,
             MaterialTheme.colorScheme.outlineVariant,
         ),
     ) {
@@ -466,5 +466,3 @@ private fun Etape(
         }
     }
 }
-
-private fun Int.dp() = androidx.compose.ui.unit.Dp(this.toFloat())

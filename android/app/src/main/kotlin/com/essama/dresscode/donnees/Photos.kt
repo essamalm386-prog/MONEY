@@ -27,7 +27,8 @@ private const val QUALITE = 82
 
 class Photos(private val contexte: Context) {
 
-    private val dossier: File
+    /** Dossier prive ou vivent les photos, cree au besoin. */
+    val dossier: File
         get() = File(contexte.filesDir, "photos").apply { mkdirs() }
 
     fun fichier(nom: String): File = File(dossier, nom)

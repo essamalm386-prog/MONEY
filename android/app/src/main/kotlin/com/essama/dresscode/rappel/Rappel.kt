@@ -20,6 +20,7 @@ import com.essama.dresscode.metier.resumeDuJour
 import com.essama.dresscode.metier.texteRappel
 import kotlinx.coroutines.flow.first
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -61,8 +62,8 @@ object Rappel {
      */
     fun replanifier(contexte: Context, heure: Int? = null) {
         val cible = heure ?: 7
-        val travail = PeriodicWorkRequestBuilder<RappelWorker>(Duration.ofDays(1))
-            .setInitialDelay(delaiJusqua(cible))
+        val travail = PeriodicWorkRequestBuilder<RappelWorker>(1, TimeUnit.DAYS)
+            .setInitialDelay(delaiJusqua(cible).toMinutes(), TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(contexte).enqueueUniquePeriodicWork(

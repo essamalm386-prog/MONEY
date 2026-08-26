@@ -56,8 +56,10 @@ fun AppDressCode(depot: Depot) {
     val entree by navigation.currentBackStackEntryAsState()
     val routeCourante = entree?.destination?.route
 
-    val montrerNavigation = routeCourante in sections.map { racine(it.route) } ||
-        routeCourante == Route.Commandes.chemin
+    /* Les routes portent leurs parametres (« commandes?filtre=… ») :
+       la comparaison se fait sur la racine, sinon aucun onglet ne
+       s'allume jamais. */
+    val montrerNavigation = racine(routeCourante.orEmpty()) in sections.map { racine(it.route) }
 
     val message: (String) -> Unit = { texte ->
         portee.launch { messages.showSnackbar(texte) }

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
 import com.essama.dresscode.charte.Espace
@@ -157,7 +157,7 @@ private fun JetonStatut(statut: Statut) {
         Statut.LIVREE -> MaterialTheme.colorScheme.onTertiaryContainer
     }
     Box(
-        modifier = Modifier.size(40.dp()).background(fond, CircleShape),
+        modifier = Modifier.size(40.dp).background(fond, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         IconeSymbole(icone = iconeDe(statut), taille = Taille.petite, couleur = encre)
@@ -198,5 +198,3 @@ private fun messageVide(filtre: String) = when (filtre) {
     "toutes" -> "Aucune commande enregistrée."
     else -> "Aucune commande à ce stade."
 }
-
-private fun Int.dp() = androidx.compose.ui.unit.Dp(this.toFloat())

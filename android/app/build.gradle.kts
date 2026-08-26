@@ -53,6 +53,11 @@ android {
     }
 
     compileOptions {
+        /* Tout le moteur metier raisonne en java.time, qui n'existe
+           qu'a partir d'Android 8. Le desugaring le rend disponible
+           des Android 7 : le produit vise des telephones d'entree de
+           gamme, en exclure une generation entiere serait cher paye. */
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -79,6 +84,8 @@ ksp {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.activity.compose)
