@@ -108,6 +108,9 @@ jobs:
     name: Interface sur émulateur
     needs: construire
     runs-on: ubuntu-latest
+    # Necessaire pour deposer les captures sur la branche « captures ».
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -153,3 +156,53 @@ jobs:
           name: captures-android
           path: android/app/build/outputs/connected_android_test_additional_output/
           if-no-files-found: warn
+
+      # Les artefacts sont servis depuis un stockage que certains
+      # reseaux d'entreprise n'atteignent pas. Une branche dediee rend
+      # les captures lisibles par un simple « git fetch », et donne un
+      # historique visuel de l'interface au fil des versions.
+      #
+      # Branche a part, jamais la branche de la PR : y pousser
+      # relancerait ce meme workflow en boucle.
+      - name: Déposer les captures sur la branche « captures »
+        if: always()
+        env:
+          # Par l'environnement plutot que dans la ligne de commande :
+          # un jeton dans un argument se retrouve dans les traces.
+          JETON: ${{ github.token }}
+        run: |
+          source=$(find android/app/build/outputs/connected_android_test_additional_output \
+                   -name '*.png' -print -quit 2>/dev/null || true)
+          if [ -z "$source" ]; then
+            echo "::notice::Aucune capture produite, rien à déposer."
+            exit 0
+          fi
+
+          depot=$(mktemp -d)
+          git init -q "$depot"
+          cd "$depot"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin \
+            "https://x-access-token:${JETON}@github.com/${{ github.repository }}.git"
+
+          mkdir -p android
+          find "$GITHUB_WORKSPACE/android/app/build/outputs/connected_android_test_additional_output" \
+            -name '*.png' -exec cp {} android/ \;
+
+          cat > LISEZ-MOI.md <<TEXTE
+          # Captures de l'application Android
+
+          Produites par le test de parcours sur émulateur, à chaque
+          exécution du workflow Android. Cette branche est réécrite à
+          chaque fois : elle montre l'état courant, pas un historique.
+
+          Commit : ${{ github.sha }}
+          TEXTE
+
+          git add -A
+          git commit -q -m "Captures de l'interface — ${{ github.sha }}"
+          # Force : cette branche est un miroir de l'etat courant.
+          git push -q --force origin HEAD:captures
+          echo "::notice::Captures déposées sur la branche « captures »."
+
