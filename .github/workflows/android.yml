@@ -59,9 +59,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Tests unitaires
+      # assembleDebugAndroidTest compile les tests instrumentes sans
+      # emulateur. Sans lui, une erreur dans ces sources n'apparait que
+      # dans le job emulateur, quatre minutes plus loin et melee aux
+      # traces de l'appareil.
+      - name: Tests unitaires et compilation des tests instrumentés
         working-directory: android
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon testDebugUnitTest assembleDebugAndroidTest
 
       - name: Rapport de tests
         if: always()
