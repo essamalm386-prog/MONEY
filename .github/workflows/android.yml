@@ -138,12 +138,16 @@ jobs:
           disable-animations: true
           working-directory: android
           script: |
+            # Les captures valent surtout quand le test echoue : on les
+            # recupere avant de propager l'echec, sinon on diagnostique
+            # a l'aveugle.
+            set +e
             ./gradlew --no-daemon connectedDebugAndroidTest
-            # Les captures sont ecrites dans le dossier externe prive
-            # de l'application de debogage.
+            statut=$?
             adb pull \
               /sdcard/Android/data/com.essama.dresscode.debug/files/Pictures/dress-code \
               captures
+            exit $statut
 
       - name: Publier les captures
         if: always()

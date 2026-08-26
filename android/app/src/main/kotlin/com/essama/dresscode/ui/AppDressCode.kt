@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -159,6 +160,7 @@ private fun BarreNavigation(navigation: NavHostController, routeCourante: String
         sections.forEach { section ->
             val actif = racine(routeCourante ?: "") == racine(section.route)
             NavigationBarItem(
+                modifier = Modifier.testTag("onglet-${racine(section.route)}"),
                 selected = actif,
                 onClick = {
                     navigation.navigate(section.route) {
@@ -188,6 +190,7 @@ private fun BoutonAction(
     when (racine) {
         Route.Aujourdhui.chemin, "commandes", Route.Clients.chemin -> {
             ExtendedFloatingActionButton(
+                modifier = Modifier.testTag("action-principale"),
                 onClick = { navigation.navigate(Route.nouvelleCommande()) },
                 icon = { IconeSymbole(icone = Icones.Add) },
                 text = { Text("Commande") },

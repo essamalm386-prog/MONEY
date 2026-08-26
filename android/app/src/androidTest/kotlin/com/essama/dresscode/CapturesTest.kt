@@ -3,7 +3,7 @@ package com.essama.dresscode
 import android.graphics.Bitmap
 import android.os.Environment
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -115,6 +115,11 @@ class CapturesTest {
         }
     }
 
+    /* On vise les etiquettes de test et non les libelles : « Aujourd'hui »
+       est a la fois un onglet et un titre d'ecran, et un texte de
+       l'interface change au fil de la redaction. */
+    private fun onglet(route: String) = regle.onNodeWithTag("onglet-$route")
+
     @Test
     fun parcourirLApplicationEtCapturerChaqueEcran() {
         semer()
@@ -122,20 +127,20 @@ class CapturesTest {
 
         capturer("01-aujourdhui")
 
-        regle.onNodeWithText("Commandes").performClick()
+        onglet("commandes").performClick()
         capturer("02-commandes")
 
-        regle.onNodeWithText("Clientes").performClick()
+        onglet("clients").performClick()
         capturer("03-clientes")
 
-        regle.onNodeWithText("Modèles").performClick()
+        onglet("modeles").performClick()
         capturer("04-modeles")
 
-        /* Retour a l'accueil puis creation : c'est le parcours qui
+        /* Retour a l'accueil, puis creation : c'est le parcours qui
            decide de l'adoption, il merite sa capture. */
-        regle.onNodeWithText("Aujourd’hui").performClick()
+        onglet("aujourdhui").performClick()
         regle.waitForIdle()
-        regle.onNodeWithText("Commande").performClick()
+        regle.onNodeWithTag("action-principale").performClick()
         capturer("05-nouvelle-commande")
 
         val produites = dossier.listFiles()?.size ?: 0

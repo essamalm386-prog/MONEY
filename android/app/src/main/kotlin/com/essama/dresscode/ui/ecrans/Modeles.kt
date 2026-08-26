@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -72,6 +73,7 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
                l'action du moment. */
             if (selection.isEmpty()) {
                 ExtendedFloatingActionButton(
+                    modifier = Modifier.testTag("action-principale"),
                     onClick = { message("Ajout d’un modèle — à brancher") },
                     icon = { IconeSymbole(icone = Icones.Add) },
                     text = { Text("Modèle") },
