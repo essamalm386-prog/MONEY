@@ -1,0 +1,19 @@
+{
+  "name": "dress-code",
+  "version": "1.0.0",
+  "description": "DRESS CODE By Essama — le cahier du couturier, qui se souvient a sa place",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "verifier": "node outils/verifier.mjs",
+    "verifier:navigateur": "node outils/verifier-navigateur.mjs",
+    "captures": "node outils/verifier-navigateur.mjs --captures",
+    "icones-app": "node outils/generer-icones-app.mjs",
+    "tokens": "node outils/generer-tokens.mjs",
+    "icones": "node outils/sous-ensembler-icones.mjs",
+    "servir": "node outils/servir.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}

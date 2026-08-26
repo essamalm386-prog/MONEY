@@ -1,0 +1,746 @@
+/* ============================================================
+   DRESS CODE — styles propres a l'application
+   ------------------------------------------------------------
+   Tout passe par les jetons du kit : aucune couleur, aucun
+   espacement, aucun rayon en dur. Le mode sombre suit donc sans
+   une ligne de plus.
+
+   Ce fichier n'ajoute que ce que composants.css ne couvre pas :
+   la mise en page a trois zones fixes (barre, ecran, navigation)
+   et les quelques blocs propres au metier.
+   ============================================================ */
+
+/* ---------- Mise en page ----------
+   Barre en haut, navigation en bas, contenu qui defile entre les
+   deux. Les deux barres restent visibles : sur telephone, cacher
+   la navigation au defilement oblige a remonter pour changer
+   d'ecran. */
+
+:root {
+  --barre-hauteur: 64px;
+  --navigation-hauteur: 68px;
+  --colonne-max: 720px;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+
+/* composants.css pose « display: flex » sur la navigation et le
+   bouton flottant, ce qui l'emporte sur la regle du navigateur pour
+   l'attribut hidden. Sans ce rappel, masquer un element n'a aucun
+   effet et le bouton flottant recouvre l'action d'enregistrement. */
+[hidden] { display: none !important; }
+
+/* L'ecran est le conteneur de defilement, pas la page. C'est ce qui
+   permet a une barre d'action collante de se poser juste au-dessus
+   de la navigation au lieu de passer dessous. */
+body {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+
+.barre {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding-inline: var(--md-sys-spacing-2);
+  padding-top: env(safe-area-inset-top);
+  height: calc(var(--barre-hauteur) + env(safe-area-inset-top));
+  gap: var(--md-sys-spacing-2);
+}
+
+.barre .md-appbar-title {
+  font-family: var(--md-sys-typescale-font-brand);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ecran {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  outline: none;
+}
+
+.colonne {
+  width: 100%;
+  max-width: var(--colonne-max);
+  margin-inline: auto;
+  padding: var(--md-sys-spacing-6) var(--md-sys-spacing-4) var(--md-sys-spacing-16);
+}
+
+.navigation {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  padding-bottom: calc(var(--md-sys-spacing-2) + env(safe-area-inset-bottom));
+}
+
+.navigation .md-navbar-item { flex: 1; min-height: 56px; }
+
+/* Une barre d'action collante et le bouton flottant occupent le
+   meme coin. La barre porte l'action du moment, elle gagne : sans
+   cette regle le bouton recouvre « Envoyer ». */
+body[data-action-en-cours] .fab { display: none; }
+
+.fab {
+  position: fixed;
+  right: var(--md-sys-spacing-4);
+  bottom: calc(var(--navigation-hauteur) + var(--md-sys-spacing-4) + env(safe-area-inset-bottom));
+  z-index: 30;
+}
+
+.lien-evitement {
+  position: absolute;
+  left: var(--md-sys-spacing-4);
+  top: calc(-1 * var(--md-sys-spacing-16));
+  z-index: 40;
+  padding: var(--md-sys-spacing-3) var(--md-sys-spacing-5);
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  transition: top var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard);
+}
+.lien-evitement:focus { top: var(--md-sys-spacing-4); }
+
+/* Le bleu souligne du navigateur ignore la charte et casse en mode
+   sombre. Les liens prennent la couleur d'action. */
+a {
+  color: var(--md-sys-color-primary);
+  text-decoration-color: var(--md-sys-color-outline);
+  text-underline-offset: 3px;
+}
+a:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 2px; border-radius: var(--md-sys-shape-xs); }
+
+/* ---------- Rythme vertical ----------
+   La proximite dit le lien : un titre colle a son bloc, les blocs
+   ecartes entre eux. */
+
+.pile > * + * { margin-top: var(--md-sys-spacing-4); }
+.pile-large > * + * { margin-top: var(--md-sys-spacing-8); }
+.rangee { display: flex; align-items: center; gap: var(--md-sys-spacing-3); }
+.rangee-entre { display: flex; align-items: center; justify-content: space-between; gap: var(--md-sys-spacing-4); }
+.pousse { margin-left: auto; }
+.titre-section {
+  margin-bottom: var(--md-sys-spacing-3);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* ============================================================
+   AUJOURD'HUI
+   ------------------------------------------------------------
+   Le test : savoir en trois secondes, sans lire attentivement,
+   si on est en retard. D'ou des blocs pleins, un chiffre par
+   bloc, et le retard seul a porter la couleur d'erreur.
+   ============================================================ */
+
+.jour-entete { margin-bottom: var(--md-sys-spacing-6); }
+.jour-date { color: var(--md-sys-color-on-surface-variant); }
+
+.bloc {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-5);
+  width: 100%;
+  padding: var(--md-sys-spacing-5) var(--md-sys-spacing-6);
+  border: none;
+  border-radius: var(--md-sys-shape-xl);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-font-plain);
+  transition: transform var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard),
+              box-shadow var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard);
+}
+.bloc:active { transform: scale(0.99); }
+.bloc:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 2px; }
+
+.bloc-compte {
+  font-family: var(--md-sys-typescale-font-brand);
+  font-size: var(--md-sys-typescale-display-small-size);
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.2em;
+  text-align: center;
+}
+.bloc-corps { flex: 1; min-width: 0; }
+/* display: block est indispensable : text-overflow n'a aucun effet
+   sur un span en ligne, et le nom de la cliente passerait sous
+   l'icone au lieu d'etre coupe proprement. */
+.bloc-libelle {
+  display: block;
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: 500;
+}
+.bloc-detail {
+  display: block;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bloc .material-symbols-rounded { flex: none; }
+
+/* Le rouge ne sert qu'a ca. S'il servait aussi d'accent, il ne
+   voudrait plus rien dire. */
+.bloc-retard {
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+.bloc-livraison {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.bloc-argent {
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  margin-top: var(--md-sys-spacing-8);
+}
+.bloc-argent .bloc-compte {
+  font-size: var(--md-sys-typescale-headline-medium-size);
+  color: var(--md-sys-color-primary);
+  min-width: 0;
+  text-align: right;
+}
+
+.alerte-cliquable {
+  width: 100%;
+  margin-top: var(--md-sys-spacing-4);
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-font-plain);
+}
+.alerte-cliquable:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 2px; }
+
+.journee-calme {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--md-sys-spacing-4);
+  padding: var(--md-sys-spacing-12) var(--md-sys-spacing-6);
+  border-radius: var(--md-sys-shape-xl);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+
+/* ============================================================
+   LISTES DE COMMANDES ET DE CLIENTS
+   ============================================================ */
+
+.carte-lien {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-4);
+  width: 100%;
+  padding: var(--md-sys-spacing-4);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-lg);
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-font-plain);
+  transition: background var(--md-sys-motion-duration-short-4) var(--md-sys-motion-easing-standard);
+}
+.carte-lien:hover { background: var(--md-sys-color-surface-variant); }
+.carte-lien:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 2px; }
+.carte-lien + .carte-lien { margin-top: var(--md-sys-spacing-3); }
+
+.carte-corps { flex: 1; min-width: 0; }
+.carte-titre {
+  display: block;
+  font-size: var(--md-sys-typescale-body-large-size);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.carte-detail {
+  display: block;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.carte-lien > .material-symbols-rounded { flex: none; }
+
+.vignette {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  object-fit: cover;
+  border-radius: var(--md-sys-shape-md);
+  background: var(--md-sys-color-surface-variant);
+}
+.vignette-absente {
+  display: grid;
+  place-items: center;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.vignette-large { width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: var(--md-sys-shape-xl); }
+
+.pastille {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: 600;
+}
+
+.pastille-large { width: 56px; height: 56px; font-size: var(--md-sys-typescale-title-large-size); }
+
+.texte-alerte {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-2);
+  color: var(--md-sys-color-error);
+}
+
+.echeance {
+  flex: none;
+  text-align: right;
+  font-size: var(--md-sys-typescale-label-large-size);
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+}
+.echeance-retard { color: var(--md-sys-color-error); font-weight: 600; }
+.echeance-proche { color: var(--md-sys-color-primary); font-weight: 600; }
+
+/* Pastille de statut : la couleur seule ne dit rien, l'icone
+   porte le sens et le libellé est dans la fiche. */
+.jeton-statut {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.jeton-statut[data-statut='en_confection'] {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+.jeton-statut[data-statut='prete'] {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.jeton-statut[data-statut='livree'] {
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.filtres .md-badge { padding-inline: var(--md-sys-spacing-1); }
+
+/* ---------- Barre de filtres ---------- */
+
+.filtres {
+  display: flex;
+  gap: var(--md-sys-spacing-2);
+  overflow-x: auto;
+  padding-bottom: var(--md-sys-spacing-2);
+  margin-bottom: var(--md-sys-spacing-4);
+  scrollbar-width: none;
+}
+.filtres::-webkit-scrollbar { display: none; }
+.filtres .md-chip { flex: none; }
+
+/* ---------- Recherche ---------- */
+
+.recherche { position: relative; margin-bottom: var(--md-sys-spacing-5); }
+.recherche .md-input {
+  padding-left: calc(var(--md-sys-spacing-6) + 24px);
+  border-radius: var(--md-sys-shape-full);
+}
+.recherche .material-symbols-rounded {
+  position: absolute;
+  left: var(--md-sys-spacing-4);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--md-sys-color-on-surface-variant);
+  pointer-events: none;
+}
+
+/* ============================================================
+   FICHE CLIENT ET COMMANDE
+   ============================================================ */
+
+.mesures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--md-sys-spacing-3);
+}
+.mesure {
+  padding: var(--md-sys-spacing-3);
+  border-radius: var(--md-sys-shape-md);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.mesure-libelle { font-size: var(--md-sys-typescale-label-medium-size); }
+.mesure-valeur {
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface);
+}
+
+.pile-serree { margin: 0; }
+
+.ligne-info {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--md-sys-spacing-4);
+  padding-block: var(--md-sys-spacing-3);
+}
+.ligne-info + .pile-serree { margin: 0; }
+
+.ligne-info { border-top: 1px solid var(--md-sys-color-outline-variant); }
+.ligne-info dt { color: var(--md-sys-color-on-surface-variant); font-size: var(--md-sys-typescale-body-medium-size); }
+.ligne-info dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.ligne-total dd {
+  font-size: var(--md-sys-typescale-title-large-size);
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+/* ---------- Progression des statuts ---------- */
+
+.parcours {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-1);
+  margin-bottom: var(--md-sys-spacing-5);
+}
+.parcours-etape {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--md-sys-spacing-1);
+  padding: var(--md-sys-spacing-2) 0;
+  border-radius: var(--md-sys-shape-md);
+  font-size: var(--md-sys-typescale-label-small-size);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+.parcours-etape[data-atteinte='oui'] { color: var(--md-sys-color-primary); }
+.parcours-etape[data-courante='oui'] {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
+}
+
+/* ============================================================
+   CATALOGUE
+   ============================================================ */
+
+.grille-modeles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--md-sys-spacing-4);
+}
+
+.carte-modele {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-font-plain);
+  position: relative;
+}
+.carte-modele:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 4px; border-radius: var(--md-sys-shape-xl); }
+.carte-modele .vignette {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--md-sys-shape-lg);
+}
+.carte-modele-nom { font-weight: 500; font-size: var(--md-sys-typescale-body-medium-size); }
+.carte-modele-prix {
+  font-size: var(--md-sys-typescale-body-small-size);
+  color: var(--md-sys-color-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+/* La selection pour envoi : cochee, visible, et jamais plus d'une
+   cliente a la fois en face. */
+.carte-modele[aria-pressed='true'] .vignette {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+.coche {
+  position: absolute;
+  top: var(--md-sys-spacing-2);
+  right: var(--md-sys-spacing-2);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+/* ============================================================
+   FORMULAIRE DE COMMANDE
+   ------------------------------------------------------------
+   Le seul point ou le papier gagne, c'est la vitesse de saisie.
+   Tout est sur un ecran, les etapes sont des reperes visuels et
+   non des pages : rien n'oblige a valider pour passer a la suite.
+   ============================================================ */
+
+.etape {
+  padding: var(--md-sys-spacing-5);
+  border-radius: var(--md-sys-shape-xl);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+.etape + .etape { margin-top: var(--md-sys-spacing-4); }
+.etape-entete {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-3);
+  margin-bottom: var(--md-sys-spacing-4);
+}
+.etape-numero {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: 600;
+}
+.etape[data-remplie='oui'] .etape-numero {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+.etape-titre { font-size: var(--md-sys-typescale-title-medium-size); font-weight: 500; }
+
+.md-field:last-child { margin-bottom: 0; }
+
+.champ-suffixe { position: relative; display: flex; align-items: center; }
+.champ-suffixe .suffixe {
+  position: absolute;
+  right: var(--md-sys-spacing-4);
+  color: var(--md-sys-color-on-surface-variant);
+  pointer-events: none;
+}
+.champ-suffixe .md-input { padding-right: calc(var(--md-sys-spacing-8) + 16px); }
+
+.requis {
+  font-weight: 400;
+  font-size: var(--md-sys-typescale-label-small-size);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Petits ajustements d'espacement, pour eviter les styles en
+   ligne dans les gabarits. */
+.espace-avant { margin-top: var(--md-sys-spacing-4); }
+.espace-avant-large { margin-top: var(--md-sys-spacing-5); display: block; }
+.espace-apres { margin-bottom: var(--md-sys-spacing-4); }
+.espace-apres-court { margin-bottom: var(--md-sys-spacing-3); }
+.rangee-souple { flex-wrap: wrap; }
+.separateur-ou { margin-block: var(--md-sys-spacing-4); }
+
+.grille-deux {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--md-sys-spacing-4);
+}
+
+/* Le choix rapide d'une echeance : « vendredi » se choisit en un
+   appui, la saisie d'une date complete reste disponible dessous. */
+.raccourcis { display: flex; flex-wrap: wrap; gap: var(--md-sys-spacing-2); margin-bottom: var(--md-sys-spacing-3); }
+
+/* Barre d'enregistrement collee au bas de l'ecran : le pouce y est
+   deja, et le total reste visible pendant la saisie. */
+.barre-action {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-4);
+  margin: var(--md-sys-spacing-6) calc(-1 * var(--md-sys-spacing-4)) calc(-1 * var(--md-sys-spacing-16));
+  /* Au-dessus du contenu qui defile dessous, sous les feuilles. */
+  padding: var(--md-sys-spacing-4);
+  padding-bottom: calc(var(--md-sys-spacing-4) + env(safe-area-inset-bottom));
+  background: var(--md-sys-color-surface);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+.barre-action .md-btn { flex: 1; }
+.barre-action-total { font-variant-numeric: tabular-nums; }
+.barre-action-total .md-label-medium { color: var(--md-sys-color-on-surface-variant); display: block; }
+.barre-action-total strong { font-size: var(--md-sys-typescale-title-medium-size); }
+
+/* ============================================================
+   FEUILLE GLISSANTE
+   ============================================================ */
+
+.feuille {
+  margin: 0 0 0 auto;
+  margin-top: auto;
+  width: 100%;
+  max-width: var(--colonne-max);
+  max-height: 88dvh;
+  padding: 0;
+  border: none;
+  border-radius: var(--md-sys-shape-2xl) var(--md-sys-shape-2xl) 0 0;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  box-shadow: var(--md-sys-elevation-3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.feuille::backdrop {
+  background: var(--md-sys-color-scrim);
+  opacity: 0.45;
+}
+.feuille[open] { animation: monter var(--md-sys-motion-duration-medium-2) var(--md-sys-motion-easing-emphasized-decelerate); }
+@keyframes monter { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.feuille-poignee {
+  width: 40px;
+  height: 4px;
+  margin: var(--md-sys-spacing-3) auto 0;
+  border-radius: var(--md-sys-shape-full);
+  background: var(--md-sys-color-outline-variant);
+}
+.feuille-entete {
+  display: flex;
+  align-items: center;
+  gap: var(--md-sys-spacing-4);
+  padding: var(--md-sys-spacing-4) var(--md-sys-spacing-4) var(--md-sys-spacing-3) var(--md-sys-spacing-6);
+}
+.feuille-entete h2 { flex: 1; margin: 0; }
+.feuille-corps {
+  overflow-y: auto;
+  padding: 0 var(--md-sys-spacing-6) var(--md-sys-spacing-6);
+  padding-bottom: calc(var(--md-sys-spacing-6) + env(safe-area-inset-bottom));
+}
+
+/* ============================================================
+   MESSAGES ET ETATS
+   ============================================================ */
+
+.message {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--navigation-hauteur) + var(--md-sys-spacing-6) + env(safe-area-inset-bottom));
+  z-index: 60;
+  transform: translate(-50%, 16px);
+  max-width: min(92vw, 480px);
+  padding: var(--md-sys-spacing-4) var(--md-sys-spacing-5);
+  border-radius: var(--md-sys-shape-md);
+  background: var(--md-sys-color-inverse-surface);
+  color: var(--md-sys-color-inverse-on-surface);
+  box-shadow: var(--md-sys-elevation-3);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--md-sys-motion-duration-medium-1) var(--md-sys-motion-easing-standard),
+              transform var(--md-sys-motion-duration-medium-1) var(--md-sys-motion-easing-emphasized-decelerate);
+}
+.message.visible { opacity: 1; transform: translate(-50%, 0); }
+.message-erreur { background: var(--md-sys-color-error); color: var(--md-sys-color-on-error); }
+
+.etat-vide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--md-sys-spacing-4);
+  padding: var(--md-sys-spacing-16) var(--md-sys-spacing-6);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+
+.md-btn-danger { background: var(--md-sys-color-error); color: var(--md-sys-color-on-error); }
+
+.bandeau-hors-ligne {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--md-sys-spacing-2);
+  padding: var(--md-sys-spacing-2);
+  background: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: var(--md-sys-typescale-label-medium-size);
+}
+
+/* ---------- Apercu du recapitulatif ---------- */
+
+.apercu-chargement {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--md-sys-spacing-3);
+  padding: var(--md-sys-spacing-12) 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.apercu-recap {
+  width: 100%;
+  height: auto;
+  border-radius: var(--md-sys-shape-lg);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  display: block;
+}
+
+/* ============================================================
+   ECRANS PLUS LARGES
+   La conception part du telephone ; au-dela, on elargit sans
+   etirer les blocs de texte.
+   ============================================================ */
+
+@media (min-width: 840px) {
+  body { grid-template-rows: auto 1fr; grid-template-columns: auto 1fr; }
+  .barre { grid-column: 1 / -1; }
+  .navigation {
+    position: static;
+    align-self: stretch;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--md-sys-spacing-2);
+    overflow-y: auto;
+    padding: var(--md-sys-spacing-4) var(--md-sys-spacing-3);
+    border-top: none;
+    border-right: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .navigation .md-navbar-item { flex: none; min-width: 76px; }
+  .fab { bottom: calc(var(--md-sys-spacing-8) + env(safe-area-inset-bottom)); }
+  .message { bottom: calc(var(--md-sys-spacing-8) + env(safe-area-inset-bottom)); }
+  .feuille { margin: auto; max-width: 560px; border-radius: var(--md-sys-shape-2xl); }
+}
