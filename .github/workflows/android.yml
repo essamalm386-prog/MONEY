@@ -141,15 +141,15 @@ jobs:
           # un shell distinct : une variable ne survit pas d'une ligne a
           # la suivante, et une continuation « \ » casse. Tout tient donc
           # sur une seule ligne.
-          # Les captures valent surtout quand le test echoue : on les
-          # recupere avant de propager l'echec, sinon l'interface se
-          # diagnostique a l'aveugle.
-          script: ./gradlew --no-daemon connectedDebugAndroidTest; statut=$?; adb pull /sdcard/Android/data/com.essama.dresscode.debug/files/Pictures/dress-code captures; exit $statut
+          # Les captures sortent par le service de stockage de test, que
+          # Gradle rapatrie dans les sorties de build : adb ne peut plus
+          # lire le dossier externe d'une application depuis Android 11.
+          script: ./gradlew --no-daemon connectedDebugAndroidTest
 
       - name: Publier les captures
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: captures-android
-          path: android/captures/
-          if-no-files-found: ignore
+          path: android/app/build/outputs/connected_android_test_additional_output/
+          if-no-files-found: warn

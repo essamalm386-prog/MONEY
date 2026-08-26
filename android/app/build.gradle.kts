@@ -17,6 +17,10 @@ android {
         versionName = (project.findProperty("versionName") as String?) ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        /* Sans ce service, les captures produites par un test
+           instrumente restent prisonnieres du telephone : depuis
+           Android 11, adb ne voit plus /sdcard/Android/data/<paquet>. */
+        testInstrumentationRunnerArguments["useTestStorageService"] = "true"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -112,6 +116,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.storage)
+    androidTestUtil(libs.androidx.test.services)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)

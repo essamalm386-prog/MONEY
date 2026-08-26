@@ -9,11 +9,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.services.storage.TestStorage
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
 import java.time.LocalDate
 
 /*
@@ -31,16 +30,15 @@ class CapturesTest {
     @get:Rule
     val regle = createAndroidComposeRule<MainActivity>()
 
-    private val dossier: File by lazy {
-        val contexte = InstrumentationRegistry.getInstrumentation().targetContext
-        File(contexte.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "dress-code")
-            .apply { mkdirs() }
-    }
+    /* Le stockage de test est le seul chemin de sortie fiable : le
+       dossier externe de l'application est masque a adb depuis
+       Android 11, et Gradle rapatrie ce stockage-ci tout seul. */
+    private val stockage = TestStorage()
 
     private fun capturer(nom: String) {
         regle.waitForIdle()
         val image: Bitmap = regle.onRoot().captureToImage().asAndroidBitmap()
-        File(dossier, "$nom.png").outputStream().use {
+        stockage.openOutputFile("dress-code/$nom.png").use {
             image.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
@@ -142,8 +140,5 @@ class CapturesTest {
         regle.waitForIdle()
         regle.onNodeWithTag("action-principale").performClick()
         capturer("05-nouvelle-commande")
-
-        val produites = dossier.listFiles()?.size ?: 0
-        assertTrue("aucune capture produite dans $dossier", produites >= 5)
     }
 }
