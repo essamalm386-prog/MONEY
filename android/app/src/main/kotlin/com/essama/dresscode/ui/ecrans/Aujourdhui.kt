@@ -179,16 +179,10 @@ fun EcranAujourdhui(modeleVue: ModeleVue, navigation: NavHostController) {
 
         if (resume.aEncaisser > 0) {
             item {
-                /* Le bloc argent se distingue par sa forme, pas par une
-                   quatrieme couleur : un rose voisin du rouge d'erreur
-                   brouillerait le seul signal qui doit rester unique. */
-                BlocResume(
-                    compte = montant(resume.aEncaisser),
+                com.essama.dresscode.ui.BlocMontant(
                     libelle = "Reste à encaisser",
                     detail = "sur ${resume.nbImpayees} commande${if (resume.nbImpayees > 1) "s" else ""}",
-                    icone = Icones.Payments,
-                    fond = MaterialTheme.colorScheme.surface,
-                    encre = MaterialTheme.colorScheme.onSurface,
+                    montant = montant(resume.aEncaisser),
                     modifier = Modifier.padding(top = Espace.quatre),
                     surClic = { navigation.navigate(Route.commandes("impayees")) },
                 )

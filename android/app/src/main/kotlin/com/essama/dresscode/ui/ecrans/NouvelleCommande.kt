@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -200,19 +201,32 @@ fun EcranNouvelleCommande(
                         modifier = Modifier.padding(bottom = Espace.trois),
                     )
                 }
+                /* Deux colonnes : six champs pleine largeur obligeraient
+                   a faire defiler pendant la prise de mesures, et le seul
+                   point ou le papier gagne est la vitesse de saisie. */
                 val liste = if (mesuresEtendues) Mesure.entries else Mesure.base
-                liste.forEach { mesure ->
-                    OutlinedTextField(
-                        value = mesures[mesure].orEmpty(),
-                        onValueChange = { mesures = mesures + (mesure to it) },
-                        label = { Text(mesure.libelle) },
-                        suffix = { Text("cm") },
-                        singleLine = true,
+                liste.chunked(2).forEach { paire ->
+                    Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = Espace.deux),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = KeyboardType.Decimal,
-                        ),
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(Espace.trois),
+                    ) {
+                        paire.forEach { mesure ->
+                            OutlinedTextField(
+                                value = mesures[mesure].orEmpty(),
+                                onValueChange = { mesures = mesures + (mesure to it) },
+                                label = { Text(mesure.libelle) },
+                                suffix = { Text("cm") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = KeyboardType.Decimal,
+                                ),
+                            )
+                        }
+                        /* Le nombre de mesures peut etre impair : la
+                           derniere garde sa demi-largeur. */
+                        if (paire.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
                 if (!mesuresEtendues) {
                     androidx.compose.material3.TextButton(onClick = { mesuresEtendues = true }) {

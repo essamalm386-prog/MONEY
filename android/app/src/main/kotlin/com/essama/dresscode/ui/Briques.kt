@@ -1,6 +1,7 @@
 package com.essama.dresscode.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,6 +82,54 @@ fun BlocResume(
             }
         }
         IconeSymbole(icone = icone, couleur = encre)
+    }
+}
+
+/**
+ * Le total du a l'atelier. Il se distingue par sa forme — un contour
+ * plutot qu'un aplat — et non par une quatrieme couleur : un rose
+ * voisin du rouge d'erreur brouillerait le seul signal qui doit
+ * rester unique.
+ *
+ * Le montant va a droite, pas dans la colonne du compteur : « 250 000 F »
+ * en taille d'affichage repousse le libelle sur trois lignes.
+ */
+@Composable
+fun BlocMontant(
+    libelle: String,
+    detail: String,
+    montant: String,
+    modifier: Modifier = Modifier,
+    surClic: () -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant,
+                RoundedCornerShape(Rayon.xl),
+            )
+            .clickable(onClick = surClic)
+            .padding(horizontal = Espace.six, vertical = Espace.cinq),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Espace.quatre),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(libelle, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = montant,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

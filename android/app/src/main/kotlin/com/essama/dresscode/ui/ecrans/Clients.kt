@@ -92,10 +92,11 @@ fun EcranClients(modeleVue: ModeleVue, navigation: NavHostController) {
 
             CarteLien(
                 titre = client.nom,
+                /* Le badge « Impayé » dit deja le solde : le repeter
+                   ici ne fait que tronquer le numero de telephone. */
                 detail = listOfNotNull(
                     client.telephone.ifBlank { null },
                     if (enCours > 0) "$enCours en cours" else null,
-                    if (du > 0) "solde à encaisser" else null,
                 ).joinToString(" · ").ifBlank { "Aucune commande" },
                 debut = { Pastille(client.nom) },
                 fin = {
