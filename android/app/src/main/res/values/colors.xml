@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Recopiees depuis design/tokens/tokens.css : un fichier de
+  ressources Android ne lit pas les variables CSS. Les regenerer
+  avec la charte si la couleur de marque change.
+-->
+<resources>
+    <color name="couleur_marque">#5452b4</color>
+    <color name="fond_application">#fffbff</color>
+</resources>

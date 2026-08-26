@@ -17,3 +17,12 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
+.kotlin-lib/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.jks
+*.keystore

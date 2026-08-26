@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DRESS CODE</string>
+
+    <!--
+      Adresse du site publie par .github/workflows/pages.yml.
+      Changer ces trois valeurs ensemble si le site demenage, et
+      mettre a jour .well-known/assetlinks.json en consequence.
+    -->
+    <string name="url_lancement" translatable="false">https://essamalm386-prog.github.io/MONEY/</string>
+    <string name="hote" translatable="false">essamalm386-prog.github.io</string>
+    <string name="chemin" translatable="false">/MONEY/</string>
+
+    <string name="asset_statements" translatable="false">
+        [{
+          \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+          \"target\": {
+            \"namespace\": \"web\",
+            \"site\": \"https://essamalm386-prog.github.io\"
+          }
+        }]
+    </string>
+</resources>

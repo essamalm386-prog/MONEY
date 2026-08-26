@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme du cadre systeme pendant que Chrome se prepare.
+         Parent du framework, pour n'ajouter aucune dependance. -->
+    <style name="Theme.Lancement" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@color/fond_application</item>
+    </style>
+</resources>
