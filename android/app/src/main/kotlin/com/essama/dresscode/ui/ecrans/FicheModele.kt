@@ -4,12 +4,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,7 +21,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.essama.dresscode.charte.Espace
 import com.essama.dresscode.charte.IconeSymbole
@@ -96,7 +97,21 @@ fun FeuilleModele(
                 style = MaterialTheme.typography.headlineSmall,
             )
 
+            /* La photo est la premiere chose qu'on ajoute, alors c'est
+               elle la plus grande cible : l'emplacement lui-meme ouvre
+               la galerie, sans bouton separe en dessous.
+
+               Vide, il reste bas — un rectangle gris au format 4:3
+               occupait la moitie de la feuille et repoussait le nom et
+               le prix hors de l'ecran sur un petit telephone. Rempli,
+               il reprend le 4:3 : c'est la photo qu'on vient voir. */
             val fichier = photo?.let { modeleVue.depot.photos.fichier(it) }
+            val ouvrirGalerie = {
+                choisirPhoto.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            }
+
             if (fichier != null) {
                 AsyncImage(
                     model = fichier,
@@ -105,37 +120,36 @@ fun FeuilleModele(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(4f / 3f)
-                        .clip(RoundedCornerShape(Rayon.lg)),
+                        .clip(RoundedCornerShape(Rayon.lg))
+                        .clickable(onClick = ouvrirGalerie),
                 )
+                TextButton(onClick = ouvrirGalerie, modifier = Modifier.fillMaxWidth()) {
+                    IconeSymbole(icone = Icones.AddPhotoAlternate, taille = Taille.petite)
+                    Text("  Changer la photo")
+                }
             } else {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(4f / 3f)
-                        .background(
-                            MaterialTheme.colorScheme.surfaceVariant,
-                            RoundedCornerShape(Rayon.lg),
-                        ),
-                    contentAlignment = Alignment.Center,
+                        .height(148.dp)
+                        .clip(RoundedCornerShape(Rayon.lg))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable(onClick = ouvrirGalerie),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
                     IconeSymbole(
-                        icone = Icones.Checkroom,
+                        icone = Icones.AddPhotoAlternate,
                         taille = Taille.grande,
                         couleur = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-            }
-
-            OutlinedButton(
-                onClick = {
-                    choisirPhoto.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    Text(
+                        "Ajouter une photo",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = Espace.deux),
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                IconeSymbole(icone = Icones.AddPhotoAlternate, taille = Taille.petite)
-                Text("  ${if (photo == null) "Ajouter une photo" else "Changer la photo"}")
+                }
             }
 
             OutlinedTextField(
