@@ -137,17 +137,14 @@ jobs:
           profile: pixel_6
           disable-animations: true
           working-directory: android
-          script: |
-            # Les captures valent surtout quand le test echoue : on les
-            # recupere avant de propager l'echec, sinon on diagnostique
-            # a l'aveugle.
-            set +e
-            ./gradlew --no-daemon connectedDebugAndroidTest
-            statut=$?
-            adb pull \
-              /sdcard/Android/data/com.essama.dresscode.debug/files/Pictures/dress-code \
-              captures
-            exit $statut
+          # android-emulator-runner execute CHAQUE LIGNE du script dans
+          # un shell distinct : une variable ne survit pas d'une ligne a
+          # la suivante, et une continuation « \ » casse. Tout tient donc
+          # sur une seule ligne.
+          # Les captures valent surtout quand le test echoue : on les
+          # recupere avant de propager l'echec, sinon l'interface se
+          # diagnostique a l'aveugle.
+          script: ./gradlew --no-daemon connectedDebugAndroidTest; statut=$?; adb pull /sdcard/Android/data/com.essama.dresscode.debug/files/Pictures/dress-code captures; exit $statut
 
       - name: Publier les captures
         if: always()
