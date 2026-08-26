@@ -139,7 +139,11 @@ jobs:
           working-directory: android
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest
-            adb pull /sdcard/Pictures/dress-code captures || true
+            # Les captures sont ecrites dans le dossier externe prive
+            # de l'application de debogage.
+            adb pull \
+              /sdcard/Android/data/com.essama.dresscode.debug/files/Pictures/dress-code \
+              captures
 
       - name: Publier les captures
         if: always()
