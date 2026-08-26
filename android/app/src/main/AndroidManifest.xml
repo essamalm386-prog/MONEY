@@ -1,91 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Aucune activite ecrite a la main : LauncherActivity vient de
-  androidbrowserhelper et ouvre l'application web en plein ecran.
-
-  Aucune permission non plus. L'appareil photo, le partage et les
-  telechargements passent par Chrome, qui demande lui-meme ce dont
-  il a besoin. Une application de couture qui reclamerait des
-  permissions systeme au premier lancement inquieterait pour rien.
--->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Le rappel du matin est la seule chose que l'application demande.
+      Aucune permission de reseau : rien ne sort de l'appareil.
+      L'appareil photo passe par l'application photo du telephone, la
+      galerie par le selecteur systeme : aucune permission non plus.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
+        android:name=".DressCodeApplication"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.DressCode"
         android:allowBackup="true"
-        android:fullBackupContent="@xml/sauvegarde"
-        android:dataExtractionRules="@xml/extraction_donnees"
         android:supportsRtl="false">
 
-        <meta-data
-            android:name="asset_statements"
-            android:resource="@string/asset_statements" />
-
         <activity
-            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.Lancement">
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="@string/url_lancement" />
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
-                android:resource="@color/couleur_marque" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
-                android:resource="@color/fond_application" />
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE"
-                android:resource="@mipmap/ic_launcher_round" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR"
-                android:resource="@color/fond_application" />
-            <meta-data
-                android:name="androidx.browser.trusted.splashScreenParamKey.fadeOutDurationMs"
-                android:value="200" />
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
-                android:value="com.essama.dresscode.fileprovider" />
-
+            android:theme="@style/Theme.DressCode"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <!--
-              Ouvre l'application plutot que le navigateur quand on
-              suit un lien vers le site. autoVerify demande a Android
-              de controler /.well-known/assetlinks.json ; sans cette
-              verification l'application marche, mais Chrome garde sa
-              barre d'adresse en haut.
-            -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="@string/hote"
-                    android:pathPrefix="@string/chemin" />
-            </intent-filter>
         </activity>
 
-        <!-- Requis par androidbrowserhelper pour le partage de fichiers. -->
+        <!--
+          Partage du recapitulatif vers WhatsApp : l'image et le PDF
+          sont ecrits dans le cache, ce fournisseur donne a WhatsApp
+          le droit de les lire, le temps de l'envoi.
+        -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.essama.dresscode.fileprovider"
+            android:authorities="${applicationId}.fichiers"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/chemins_fichiers" />
+                android:resource="@xml/chemins_partages" />
         </provider>
     </application>
 </manifest>

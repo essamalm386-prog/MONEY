@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Theme du cadre systeme uniquement : toute l'interface est dessinee
+  par Compose, qui prend ses couleurs dans le ColorScheme genere
+  depuis tokens.css.
+-->
+<resources>
+    <style name="Theme.DressCode" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/fond_application</item>
+    </style>
+</resources>

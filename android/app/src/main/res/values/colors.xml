@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Recopiees depuis design/tokens/tokens.css : un fichier de
-  ressources Android ne lit pas les variables CSS. Les regenerer
-  avec la charte si la couleur de marque change.
+  Recopiees depuis design/tokens/tokens.css. Un fichier de ressources
+  Android ne lit pas les variables CSS ; ces deux valeurs servent
+  uniquement au fond de fenetre avant que Compose ne prenne la main.
+  Les regenerer avec la charte si la couleur de marque change.
 -->
 <resources>
     <color name="couleur_marque">#5452b4</color>
     <color name="fond_application">#fffbff</color>
+    <color name="fond_application_sombre">#1c1b1f</color>
 </resources>
