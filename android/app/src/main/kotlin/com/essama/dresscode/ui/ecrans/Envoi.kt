@@ -134,6 +134,7 @@ fun FeuilleRecapitulatif(
     ModalBottomSheet(onDismissRequest = surFermeture, sheetState = etat) {
         Column(
             modifier = Modifier
+                .testTag("feuille-recapitulatif")
                 .fillMaxWidth()
                 .padding(horizontal = Espace.quatre)
                 .padding(bottom = Espace.huit),

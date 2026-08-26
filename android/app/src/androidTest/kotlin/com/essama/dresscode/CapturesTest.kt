@@ -7,7 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.test.espresso.Espresso
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.test.platform.app.InstrumentationRegistry
@@ -52,12 +52,29 @@ class CapturesTest {
 
     /* Une feuille du bas vit dans sa propre fenetre : l'arbre Compose
        a alors deux racines et onRoot() ne sait plus laquelle prendre.
-       On passe par l'ecran de l'appareil, apres avoir verifie qu'un
-       noeud de la feuille est bien la. */
-    private fun capturerAppareil(nom: String, temoin: String) {
-        regle.waitForIdle()
-        regle.onNodeWithTag(temoin).assertExists()
-        ecrire(nom, InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+       On capture donc la feuille elle-meme, par son etiquette.
+
+       waitForIdle ne suffit pas ici : il rend la main pendant que la
+       feuille monte encore, et la capture attrape l'ecran du dessous.
+       On attend que ses bords ne bougent plus. */
+    private fun capturerFeuille(nom: String, etiquette: String) {
+        var precedent = Rect.Zero
+        var immobile = 0
+        regle.waitUntil(timeoutMillis = 15_000) {
+            val bords = regle.onNodeWithTag(etiquette).fetchSemanticsNode().boundsInWindow
+            immobile = if (bords == precedent && bords.height > 0f) immobile + 1 else 0
+            precedent = bords
+            immobile >= 3
+        }
+        ecrire(nom, regle.onNodeWithTag(etiquette).captureToImage().asAndroidBitmap())
+    }
+
+    /* Le retour passe par l'activite, pas par le systeme : une boite de
+       dialogue de l'emulateur — « Pixel Launcher isn't responding » en a
+       deja couvert une execution — vole le focus et fait echouer un
+       appui retour envoye au systeme. */
+    private fun retour() = regle.runOnUiThread {
+        regle.activity.onBackPressedDispatcher.onBackPressed()
     }
 
     /* Un atelier realiste : un ecran vide ne montrerait rien de ce
@@ -137,10 +154,10 @@ class CapturesTest {
 
     /* Le retour ferme la feuille, mais l'animation continue : cliquer
        trop tot, c'est cliquer sur le voile qui la couvre encore. */
-    private fun fermerFeuille(temoin: String) {
-        Espresso.pressBack()
-        regle.waitUntil(timeoutMillis = 5_000) {
-            regle.onAllNodesWithTag(temoin).fetchSemanticsNodes().isEmpty()
+    private fun fermerFeuille(etiquette: String) {
+        retour()
+        regle.waitUntil(timeoutMillis = 10_000) {
+            regle.onAllNodesWithTag(etiquette).fetchSemanticsNodes().isEmpty()
         }
     }
 
@@ -163,8 +180,8 @@ class CapturesTest {
         /* Le catalogue vide invite a ajouter un modele : la feuille
            qui repond a cette invitation doit s'ouvrir pour de vrai. */
         regle.onNodeWithTag("action-principale").performClick()
-        capturerAppareil("05-fiche-modele", temoin = "nom-modele")
-        fermerFeuille("nom-modele")
+        capturerFeuille("05-fiche-modele", etiquette = "feuille-modele")
+        fermerFeuille("feuille-modele")
 
         /* Retour a l'accueil, puis creation : c'est le parcours qui
            decide de l'adoption, il merite sa capture. */
@@ -172,7 +189,7 @@ class CapturesTest {
         regle.waitForIdle()
         regle.onNodeWithTag("action-principale").performClick()
         capturer("06-nouvelle-commande")
-        Espresso.pressBack()
+        retour()
         regle.waitForIdle()
 
         /* La fiche envoyee a la cliente : le dessin passe par un
@@ -190,6 +207,6 @@ class CapturesTest {
         regle.waitUntil(timeoutMillis = 15_000) {
             regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
         }
-        capturerAppareil("08-recapitulatif", temoin = "apercu-recapitulatif")
+        capturerFeuille("08-recapitulatif", etiquette = "feuille-recapitulatif")
     }
 }

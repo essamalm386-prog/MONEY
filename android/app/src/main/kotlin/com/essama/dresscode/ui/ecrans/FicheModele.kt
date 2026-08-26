@@ -84,6 +84,7 @@ fun FeuilleModele(
     ModalBottomSheet(onDismissRequest = surFermeture, sheetState = etat) {
         Column(
             modifier = Modifier
+                .testTag("feuille-modele")
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Espace.quatre)
