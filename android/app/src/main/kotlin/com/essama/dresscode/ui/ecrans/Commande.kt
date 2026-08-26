@@ -21,20 +21,25 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.essama.dresscode.charte.Espace
 import com.essama.dresscode.charte.IconeSymbole
 import com.essama.dresscode.charte.Icones
 import com.essama.dresscode.charte.Rayon
 import com.essama.dresscode.charte.Taille
+import com.essama.dresscode.metier.Commande
 import com.essama.dresscode.metier.Mesure
+import com.essama.dresscode.metier.ModeleCatalogue
 import com.essama.dresscode.metier.Statut
 import com.essama.dresscode.metier.dateLongue
 import com.essama.dresscode.metier.delai
@@ -58,6 +63,7 @@ fun EcranCommande(
 ) {
     val commande by modeleVue.commande(commandeId).collectAsState(initial = null)
     val clients by modeleVue.clients.collectAsState()
+    val atelier by modeleVue.atelier.collectAsState()
     val courante = commande ?: return
 
     val client = clients.firstOrNull { it.id == courante.clientId }
@@ -66,6 +72,30 @@ fun EcranCommande(
 
     var demandeSolde by remember { mutableStateOf(false) }
     var demandeSuppression by remember { mutableStateOf(false) }
+    var envoiFiche by remember { mutableStateOf(false) }
+    var propositionCatalogue by remember { mutableStateOf(false) }
+    val portee = rememberCoroutineScope()
+
+    /* Les deux moments qui appellent un geste de plus.
+       « Prête » : la cliente attend d'etre prevenue, et c'est
+       maintenant qu'elle doit l'etre — pas ce soir, quand le
+       couturier y repensera.
+       « Livrée » : la photo et le prix existent deja, le modele peut
+       rejoindre le catalogue sans que le couturier ait rien a
+       ressaisir. C'est ainsi qu'un catalogue se constitue sans que
+       personne ne s'assoie pour le constituer. */
+    val apresAvancee: (Commande) -> Unit = { misAJour ->
+        message(misAJour.statut.libelle)
+        when (misAJour.statut) {
+            Statut.PRETE -> envoiFiche = true
+            Statut.LIVREE -> {
+                portee.launch {
+                    if (modeleVue.depot.modelePeutEtreAjoute(misAJour)) propositionCatalogue = true
+                }
+            }
+            else -> Unit
+        }
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -131,7 +161,7 @@ fun EcranCommande(
                             if (suivant == Statut.LIVREE && courante.reste > 0) {
                                 demandeSolde = true
                             } else {
-                                modeleVue.avancer(courante) { message(suivant.libelle) }
+                                modeleVue.avancer(courante) { apresAvancee(it) }
                             }
                         },
                     ) {
@@ -139,7 +169,10 @@ fun EcranCommande(
                         Text("  ${suivant.actionPourAtteindre}")
                     }
                 }
-                OutlinedButton(onClick = { message("Envoi de la fiche — à brancher") }) {
+                OutlinedButton(
+                    onClick = { envoiFiche = true },
+                    modifier = Modifier.testTag("envoyer-fiche"),
+                ) {
                     IconeSymbole(icone = Icones.Send, taille = Taille.petite)
                     Text("  Envoyer la fiche")
                 }
@@ -191,6 +224,20 @@ fun EcranCommande(
         }
     }
 
+    /* La forme de la fiche suit l'etat de la commande : recapitulatif
+       a la commande, « votre vetement est pret » quand il l'est, recu
+       a la livraison. Trois moments ou la cliente attend une trace. */
+    if (envoiFiche) {
+        FeuilleRecapitulatif(
+            modeleVue = modeleVue,
+            atelier = atelier,
+            client = client,
+            commande = courante,
+            message = message,
+            surFermeture = { envoiFiche = false },
+        )
+    }
+
     /* Une commande qui passe a « Livree » demande une seule chose :
        le solde a-t-il ete regle ? Si non, elle reste comptee dans ce
        qui reste a encaisser et le couturier ne l'oublie pas. */
@@ -207,14 +254,40 @@ fun EcranCommande(
             confirmButton = {
                 TextButton(onClick = {
                     demandeSolde = false
-                    modeleVue.avancer(courante, soldeRegle = true) { message("Livrée") }
+                    modeleVue.avancer(courante, soldeRegle = true) { apresAvancee(it) }
                 }) { Text("Oui, réglé") }
             },
             dismissButton = {
                 TextButton(onClick = {
                     demandeSolde = false
-                    modeleVue.avancer(courante, soldeRegle = false) { message("Livrée") }
+                    modeleVue.avancer(courante, soldeRegle = false) { apresAvancee(it) }
                 }) { Text("Pas encore") }
+            },
+        )
+    }
+
+    if (propositionCatalogue) {
+        AlertDialog(
+            onDismissRequest = { propositionCatalogue = false },
+            title = { Text("Ajouter ce modèle au catalogue ?") },
+            text = {
+                Text("${courante.modeleNom} restera visible pour le montrer à une cliente.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    propositionCatalogue = false
+                    modeleVue.enregistrerModele(
+                        ModeleCatalogue(
+                            nom = courante.modeleNom,
+                            prixIndicatif = courante.prixTotal,
+                            photo = courante.photo,
+                        ),
+                    )
+                    message("Ajouté au catalogue")
+                }) { Text("Ajouter") }
+            },
+            dismissButton = {
+                TextButton(onClick = { propositionCatalogue = false }) { Text("Non") }
             },
         )
     }

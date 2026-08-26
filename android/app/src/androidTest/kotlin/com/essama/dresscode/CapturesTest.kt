@@ -1,11 +1,14 @@
 package com.essama.dresscode
 
 import android.graphics.Bitmap
-import android.os.Environment
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.test.espresso.Espresso
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.test.platform.app.InstrumentationRegistry
@@ -35,12 +38,27 @@ class CapturesTest {
        Android 11, et Gradle rapatrie ce stockage-ci tout seul. */
     private val stockage = TestStorage()
 
-    private fun capturer(nom: String) {
-        regle.waitForIdle()
-        val image: Bitmap = regle.onRoot().captureToImage().asAndroidBitmap()
+    private fun ecrire(nom: String, image: Bitmap) {
         stockage.openOutputFile("dress-code/$nom.png").use {
             image.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
+    }
+
+    /* Capture l'arbre Compose : un ecran qui ne se rend pas fait
+       echouer le test ici meme, avant l'enregistrement. */
+    private fun capturer(nom: String) {
+        regle.waitForIdle()
+        ecrire(nom, regle.onRoot().captureToImage().asAndroidBitmap())
+    }
+
+    /* Une feuille du bas vit dans sa propre fenetre : l'arbre Compose
+       a alors deux racines et onRoot() ne sait plus laquelle prendre.
+       On passe par l'ecran de l'appareil, apres avoir verifie qu'un
+       noeud de la feuille est bien la. */
+    private fun capturerAppareil(nom: String, temoin: String) {
+        regle.waitForIdle()
+        regle.onNodeWithTag(temoin).assertExists()
+        ecrire(nom, InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
     }
 
     /* Un atelier realiste : un ecran vide ne montrerait rien de ce
@@ -118,6 +136,15 @@ class CapturesTest {
        l'interface change au fil de la redaction. */
     private fun onglet(route: String) = regle.onNodeWithTag("onglet-$route")
 
+    /* Le retour ferme la feuille, mais l'animation continue : cliquer
+       trop tot, c'est cliquer sur le voile qui la couvre encore. */
+    private fun fermerFeuille(temoin: String) {
+        Espresso.pressBack()
+        regle.waitUntil(timeoutMillis = 5_000) {
+            regle.onAllNodesWithTag(temoin).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
     @Test
     fun parcourirLApplicationEtCapturerChaqueEcran() {
         semer()
@@ -134,11 +161,36 @@ class CapturesTest {
         onglet("modeles").performClick()
         capturer("04-modeles")
 
+        /* Le catalogue vide invite a ajouter un modele : la feuille
+           qui repond a cette invitation doit s'ouvrir pour de vrai. */
+        regle.onNodeWithTag("action-principale").performClick()
+        capturerAppareil("05-fiche-modele", temoin = "nom-modele")
+        fermerFeuille("nom-modele")
+
         /* Retour a l'accueil, puis creation : c'est le parcours qui
            decide de l'adoption, il merite sa capture. */
         onglet("aujourdhui").performClick()
         regle.waitForIdle()
         regle.onNodeWithTag("action-principale").performClick()
-        capturer("05-nouvelle-commande")
+        capturer("06-nouvelle-commande")
+        Espresso.pressBack()
+        regle.waitForIdle()
+
+        /* La fiche envoyee a la cliente : le dessin passe par un
+           Canvas hors Compose, c'est le seul endroit ou une capture
+           verifie vraiment quelque chose. */
+        onglet("commandes").performClick()
+        regle.waitForIdle()
+        regle.onNodeWithText("Robe cérémonie").performClick()
+        regle.waitForIdle()
+        capturer("07-commande")
+
+        regle.onNodeWithTag("envoyer-fiche").performClick()
+        /* L'apercu est dessine hors du fil principal : waitForIdle ne
+           l'attend pas, il faut guetter le noeud lui-meme. */
+        regle.waitUntil(timeoutMillis = 15_000) {
+            regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
+        }
+        capturerAppareil("08-recapitulatif", temoin = "apercu-recapitulatif")
     }
 }

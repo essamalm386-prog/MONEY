@@ -1,7 +1,6 @@
 package com.essama.dresscode.ui.ecrans
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -45,6 +45,8 @@ import com.essama.dresscode.metier.ModeleCatalogue
 import com.essama.dresscode.metier.montant
 import com.essama.dresscode.ui.EtatVide
 import com.essama.dresscode.ui.ModeleVue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 /*
  * Le catalogue est l'etagere rangee du savoir-faire.
@@ -64,7 +66,14 @@ import com.essama.dresscode.ui.ModeleVue
 @Composable
 fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
     val modeles by modeleVue.modeles.collectAsState()
+    val clients by modeleVue.clients.collectAsState()
+    val atelier by modeleVue.atelier.collectAsState()
+    val contexte = LocalContext.current
+    val portee = rememberCoroutineScope()
+
     var selection by remember { mutableStateOf(setOf<Long>()) }
+    var fiche by remember { mutableStateOf<Choix?>(null) }
+    var choisirCliente by remember { mutableStateOf(false) }
 
     Scaffold(
         floatingActionButton = {
@@ -74,7 +83,7 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
             if (selection.isEmpty()) {
                 ExtendedFloatingActionButton(
                     modifier = Modifier.testTag("action-principale"),
-                    onClick = { message("Ajout d’un modèle — à brancher") },
+                    onClick = { fiche = Choix.Nouveau },
                     icon = { IconeSymbole(icone = Icones.Add) },
                     text = { Text("Modèle") },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -87,10 +96,7 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
                 BarreEnvoi(
                     nombre = selection.size,
                     surAnnuler = { selection = emptySet() },
-                    surEnvoyer = {
-                        message("Envoi à une cliente — à brancher")
-                        selection = emptySet()
-                    },
+                    surEnvoyer = { choisirCliente = true },
                 )
             }
         },
@@ -118,13 +124,19 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
                     fichierPhoto = modele.photo?.let { modeleVue.depot.photos.fichier(it) },
                     choisi = modele.id in selection,
                     enSelection = selection.isNotEmpty(),
+                    /* Hors selection, un appui ouvre la fiche du
+                       modele ; pendant une selection, il coche ou
+                       decoche. Le meme geste, deux sens, mais jamais
+                       les deux en meme temps. */
                     surAppui = {
-                        selection = if (selection.isEmpty()) {
-                            selection
-                        } else if (modele.id in selection) {
-                            selection - modele.id
+                        if (selection.isEmpty()) {
+                            fiche = Choix.Existant(modele)
                         } else {
-                            selection + modele.id
+                            selection = if (modele.id in selection) {
+                                selection - modele.id
+                            } else {
+                                selection + modele.id
+                            }
                         }
                     },
                     surAppuiLong = {
@@ -138,6 +150,41 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
             }
         }
     }
+
+    val ouverte = fiche
+    if (ouverte != null) {
+        FeuilleModele(
+            modeleVue = modeleVue,
+            modele = (ouverte as? Choix.Existant)?.modele,
+            message = message,
+            surFermeture = { fiche = null },
+        )
+    }
+
+    if (choisirCliente) {
+        val choisis = modeles.filter { it.id in selection }
+        FeuilleChoisirCliente(
+            clients = clients,
+            titre = "Envoyer ${choisis.size} modèle${if (choisis.size > 1) "s" else ""}",
+            surChoix = { cliente ->
+                portee.launch {
+                    envoyerModeles(contexte, modeleVue, atelier, cliente, choisis)
+                    message("Modèles préparés pour ${cliente.nom}")
+                    choisirCliente = false
+                    selection = emptySet()
+                }
+            },
+            surFermeture = { choisirCliente = false },
+        )
+    }
+}
+
+/* Ce que la feuille du bas doit montrer : un modele existant ou
+   un modele a creer. Deux etats plutot qu'un booleen et une
+   variable nullable qui pourraient se contredire. */
+private sealed interface Choix {
+    data object Nouveau : Choix
+    data class Existant(val modele: ModeleCatalogue) : Choix
 }
 
 @OptIn(ExperimentalFoundationApi::class)
