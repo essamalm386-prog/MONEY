@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -177,22 +178,21 @@ class CapturesTest {
     private fun onglet(route: String) = regle.onNodeWithTag("onglet-$route")
 
     /*
-     * Quitter un ecran qui porte une feuille ouverte.
+     * Attendre qu'une feuille ait disparu.
      *
-     * Le retour ne convient pas : il depile la navigation au lieu de
-     * fermer la feuille, et l'ecran d'apres n'est plus celui qu'on
-     * croit — c'est ce qui a fait echouer ce parcours. Changer
-     * d'onglet emmene la feuille avec l'ecran qui la porte.
+     * On ne ferme jamais une feuille par un detour : ni par un appui
+     * retour, qui depile la navigation au lieu de la fermer, ni en
+     * changeant d'onglet, qui ne la ferme que si l'ecran qui la porte
+     * quitte vraiment la composition — et la barre de navigation
+     * sauvegarde l'etat des onglets, donc ce n'est pas garanti.
      *
-     * On attend qu'elle ait bien disparu : si l'onglet ne repondait
-     * pas sous le voile, l'echec doit se lire ici et pas trois gestes
-     * plus loin.
+     * Chaque feuille a un bouton qui la ferme. On appuie dessus,
+     * comme un couturier. Le parcours teste alors l'application au
+     * lieu de la contourner.
      */
-    private fun quitterVers(route: String, feuille: String) {
-        etape("  quitter vers $route (feuille $feuille)")
-        onglet(route).performClick()
+    private fun attendreFermeture(etiquette: String) {
         regle.waitUntil(timeoutMillis = 10_000) {
-            regle.onAllNodesWithTag(feuille).fetchSemanticsNodes().isEmpty()
+            regle.onAllNodesWithTag(etiquette).fetchSemanticsNodes().isEmpty()
         }
         regle.waitForIdle()
     }
@@ -214,67 +214,76 @@ class CapturesTest {
         etape("03 clientes")
 
         onglet("modeles").performClick()
-        capturer("04-modeles")
-        etape("04 modeles")
+        capturer("04-catalogue-vide")
+        etape("04 catalogue vide")
 
-        /* Le catalogue vide invite a ajouter un modele : la feuille
-           qui repond a cette invitation doit s'ouvrir pour de vrai. */
+        /* Le catalogue vide invite a ajouter un modele. On repond a
+           l'invitation pour de vrai : la feuille s'ouvre, on la
+           remplit, on enregistre. C'est aussi ce qui donnera au
+           catalogue de quoi etre choisi plus loin. */
         regle.onNodeWithTag("action-principale").performClick()
+        regle.onNodeWithTag("nom-modele").performTextInput("Boubou brodé")
+        regle.onNodeWithTag("prix-modele").performTextInput("45000")
         capturerFeuille("05-fiche-modele", etiquette = "feuille-modele")
         etape("05 feuille modele")
+        regle.onNodeWithTag("enregistrer-modele").performClick()
+        attendreFermeture("feuille-modele")
+        capturer("06-catalogue")
+        etape("06 catalogue rempli")
 
-        quitterVers("commandes", feuille = "feuille-modele")
-        ouvrirRobeCeremonie()
-        capturer("06-commande")
-        etape("06 commande")
-
-        /* Les mesures se corrigent depuis la commande : c'est ce que
-           l'ecran ne permettait pas. Les douze du metier y sont, plus
-           « Tour de tête », nommee a la main. */
-        regle.onNodeWithTag("liste-commande")
-            .performScrollToNode(hasTestTag("mesures-commande"))
-        regle.onNodeWithTag("mesures-commande").performClick()
-        capturerFeuille("07-mesures", etiquette = "feuille-mesures")
-        etape("07 mesures")
-        /* On repasse par un autre onglet avant de revenir : la barre
-           de navigation sauvegarde et restaure l'etat de chaque
-           onglet, donc rappuyer sur le sien ne ramene pas forcement a
-           sa racine. */
-        quitterVers("aujourdhui", feuille = "feuille-mesures")
-        onglet("commandes").performClick()
-
-        /* La fiche envoyee a la cliente : le dessin passe par un
-           Canvas hors Compose, c'est le seul endroit ou une capture
-           verifie vraiment quelque chose. */
-        ouvrirRobeCeremonie()
-        regle.onNodeWithTag("envoyer-fiche").performClick()
-        /* L'apercu est dessine hors du fil principal : waitForIdle ne
-           l'attend pas, il faut guetter le noeud lui-meme. */
-        regle.waitUntil(timeoutMillis = 15_000) {
-            regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
-        }
-        capturerFeuille("08-recapitulatif", etiquette = "feuille-recapitulatif")
-        etape("08 recapitulatif")
-
-        /* Le parcours qui decide de l'adoption. */
-        quitterVers("clients", feuille = "feuille-recapitulatif")
+        /* La creation de commande, avec un catalogue qui a de quoi
+           proposer : le bouton n'apparait que dans ce cas. */
         onglet("aujourdhui").performClick()
         regle.waitForIdle()
         regle.onNodeWithTag("action-principale").performClick()
-        capturer("09-nouvelle-commande")
-        etape("09 nouvelle commande")
+        capturer("07-nouvelle-commande")
+        etape("07 nouvelle commande")
 
-        /* Le calendrier en dernier : sa boite de dialogue vit dans sa
-           propre fenetre, et rien ne sait la refermer proprement
-           depuis un test. On verifie qu'elle s'ouvre, et on s'arrete
-           la. */
+        regle.onNodeWithTag("liste-nouvelle-commande")
+            .performScrollToNode(hasTestTag("choisir-modele"))
+        regle.onNodeWithTag("choisir-modele").performClick()
+        capturerFeuille("08-catalogue-choix", etiquette = "feuille-catalogue")
+        etape("08 choix au catalogue")
+        /* Choisir un modele ferme la feuille et remplit l'etape 3. */
+        regle.onNodeWithText("Boubou brodé").performClick()
+        attendreFermeture("feuille-catalogue")
+
+        /* Le calendrier : sa boite de dialogue se referme par son
+           propre bouton Annuler. */
         regle.onNodeWithTag("liste-nouvelle-commande")
             .performScrollToNode(hasTestTag("choisir-date"))
         regle.onNodeWithTag("choisir-date").performClick()
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithText("Choisir").fetchSemanticsNodes().isNotEmpty()
         }
-        etape("10 calendrier ouvert")
+        etape("09 calendrier ouvert")
+        regle.onNodeWithText("Annuler").performClick()
+        regle.waitForIdle()
+
+        /* Les mesures se corrigent depuis la commande : c'est ce que
+           l'ecran ne permettait pas. Les douze du metier y sont, plus
+           « Tour de tête », nommee a la main. */
+        onglet("commandes").performClick()
+        ouvrirRobeCeremonie()
+        capturer("10-commande")
+        etape("10 commande")
+
+        regle.onNodeWithTag("liste-commande")
+            .performScrollToNode(hasTestTag("mesures-commande"))
+        regle.onNodeWithTag("mesures-commande").performClick()
+        capturerFeuille("11-mesures", etiquette = "feuille-mesures")
+        etape("11 mesures")
+        regle.onNodeWithTag("enregistrer-mesures").performClick()
+        attendreFermeture("feuille-mesures")
+
+        /* La fiche envoyee a la cliente, en dernier : son bouton
+           ouvre WhatsApp, donc on ne l'appuie pas, et rien ne suit. */
+        regle.onNodeWithTag("envoyer-fiche").performClick()
+        regle.waitUntil(timeoutMillis = 15_000) {
+            regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
+        }
+        capturerFeuille("12-recapitulatif", etiquette = "feuille-recapitulatif")
+        etape("12 recapitulatif")
     }
 
     private fun ouvrirRobeCeremonie() {

@@ -168,7 +168,7 @@ fun FeuilleModele(
                 supportingText = { Text("Affiché « à partir de », modifiable à chaque commande.") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("prix-modele"),
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(Espace.deux)) {
