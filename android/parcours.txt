@@ -1,0 +1,20 @@
+01 aujourdhui
+02 commandes
+03 clientes
+04 catalogue vide
+05 feuille modele
+06 choix appareil photo ou galerie
+07 catalogue rempli
+08 nouvelle commande
+09 choix au catalogue
+10 calendrier ouvert
+  quitter l'écran (témoin liste-nouvelle-commande)
+  ouvrir Robe cérémonie
+11 commande
+12 mesures
+  mesures enregistrées
+  quitter l'écran (témoin liste-commande)
+13 historique
+  detail d'une commande livrée
+  fiche demandée
+14 recapitulatif
