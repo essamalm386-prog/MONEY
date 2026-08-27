@@ -2,4 +2,8 @@
 <paths>
     <!-- Fichiers temporaires ecrits juste avant un envoi WhatsApp. -->
     <cache-path name="partage" path="partage/" />
+
+    <!-- Cliches que l'appareil photo du telephone ecrit lui-meme,
+         effaces des qu'ils sont ranges dans le dossier prive. -->
+    <cache-path name="prises" path="prises/" />
 </paths>

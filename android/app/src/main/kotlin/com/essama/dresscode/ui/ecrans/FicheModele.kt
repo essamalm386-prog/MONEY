@@ -1,8 +1,5 @@
 package com.essama.dresscode.ui.ecrans
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +43,6 @@ import com.essama.dresscode.charte.Taille
 import com.essama.dresscode.metier.Categorie
 import com.essama.dresscode.metier.ModeleCatalogue
 import com.essama.dresscode.ui.ModeleVue
-import kotlinx.coroutines.launch
 
 /*
  * Un modele tient en trois informations : une photo, un nom court,
@@ -66,7 +61,6 @@ fun FeuilleModele(
     message: (String) -> Unit,
     surFermeture: () -> Unit,
 ) {
-    val portee = rememberCoroutineScope()
     val etat = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var nom by remember { mutableStateOf(modele?.nom.orEmpty()) }
@@ -74,13 +68,11 @@ fun FeuilleModele(
     var categorie by remember { mutableStateOf(modele?.categorie) }
     var photo by remember { mutableStateOf(modele?.photo) }
 
-    val choisirPhoto = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { adresse ->
-        if (adresse != null) {
-            portee.launch { photo = modeleVue.depot.photos.enregistrer(adresse) }
-        }
-    }
+    val ajouterPhoto = rememberAjoutPhoto(
+        modeleVue = modeleVue,
+        message = message,
+        surPhoto = { photo = it },
+    )
 
     ModalBottomSheet(onDismissRequest = surFermeture, sheetState = etat) {
         Column(
@@ -106,11 +98,6 @@ fun FeuilleModele(
                le prix hors de l'ecran sur un petit telephone. Rempli,
                il reprend le 4:3 : c'est la photo qu'on vient voir. */
             val fichier = photo?.let { modeleVue.depot.photos.fichier(it) }
-            val ouvrirGalerie = {
-                choisirPhoto.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                )
-            }
 
             if (fichier != null) {
                 AsyncImage(
@@ -121,9 +108,10 @@ fun FeuilleModele(
                         .fillMaxWidth()
                         .aspectRatio(4f / 3f)
                         .clip(RoundedCornerShape(Rayon.lg))
-                        .clickable(onClick = ouvrirGalerie),
+                        .clickable(onClick = ajouterPhoto)
+                        .testTag("photo-modele"),
                 )
-                TextButton(onClick = ouvrirGalerie, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = ajouterPhoto, modifier = Modifier.fillMaxWidth()) {
                     IconeSymbole(icone = Icones.AddPhotoAlternate, taille = Taille.petite)
                     Text("  Changer la photo")
                 }
@@ -134,7 +122,8 @@ fun FeuilleModele(
                         .height(148.dp)
                         .clip(RoundedCornerShape(Rayon.lg))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable(onClick = ouvrirGalerie),
+                        .clickable(onClick = ajouterPhoto)
+                        .testTag("photo-modele"),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {

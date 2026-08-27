@@ -1,8 +1,5 @@
 package com.essama.dresscode.ui.ecrans
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -132,13 +129,11 @@ fun EcranNouvelleCommande(
     var prixTotal by remember { mutableStateOf("") }
     var acompte by remember { mutableStateOf("") }
 
-    val choisirPhoto = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { adresse ->
-        if (adresse != null) {
-            portee.launch { photo = modeleVue.depot.photos.enregistrer(adresse) }
-        }
-    }
+    val ajouterPhoto = rememberAjoutPhoto(
+        modeleVue = modeleVue,
+        message = message,
+        surPhoto = { photo = it },
+    )
 
     val nombre = { texte: String -> texte.filter(Char::isDigit).toLongOrNull() ?: 0L }
     val reste = (nombre(prixTotal) - nombre(acompte)).coerceAtLeast(0)
@@ -324,11 +319,8 @@ fun EcranNouvelleCommande(
                         }
                     }
                     OutlinedButton(
-                        onClick = {
-                            choisirPhoto.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
-                        },
+                        onClick = ajouterPhoto,
+                        modifier = Modifier.testTag("ajouter-photo"),
                     ) {
                         IconeSymbole(icone = Icones.AddPhotoAlternate, taille = Taille.petite)
                         Text("  ${if (photo == null) "Photo" else "Changer"}")

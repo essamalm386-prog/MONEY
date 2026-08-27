@@ -20,6 +20,7 @@ import androidx.test.services.storage.TestStorage
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 import java.time.LocalDate
 
 /*
@@ -136,6 +137,27 @@ class CapturesTest {
             )
         }
 
+        /* Une vraie photo, rangee par le chemin exact qu'emprunte le
+           couturier quand il en choisit une. Le defaut corrige ici la
+           jetait en silence : les captures qui suivent le montrent
+           plutot que de l'affirmer. */
+        val cliche = File(
+            InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+            "semis-modele.jpg",
+        )
+        val dessin = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(dessin).apply {
+            drawColor(android.graphics.Color.rgb(63, 61, 158))
+            drawCircle(600f, 450f, 260f, android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(242, 201, 76)
+                isAntiAlias = true
+            })
+        }
+        cliche.outputStream().use { dessin.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+        dessin.recycle()
+        val photoSemee = depot.photos.enregistrer(android.net.Uri.fromFile(cliche))
+        cliche.delete()
+
         val aujourdhui = LocalDate.now()
         /* Un jeu de dates qui produit du retard, des livraisons du
            jour et un vetement a commencer : les trois blocs que
@@ -168,9 +190,36 @@ class CapturesTest {
                     ),
                     prixTotal = 50_000 + index * 10_000L,
                     acompte = 20_000,
+                    /* Une commande sur deux avec photo : la liste doit
+                       montrer les deux cas cote a cote, vignette et
+                       pastille de statut. */
+                    photo = if (index % 2 == 0) photoSemee else null,
                 ),
             )
         }
+
+        /* Une commande livree, sans quoi l'historique n'aurait rien a
+           montrer — et c'est lui que le couturier consulte pour
+           refaire « la meme que l'an dernier ». */
+        depot.ajouterCommande(
+            com.essama.dresscode.metier.Commande(
+                clientId = identifiants[0],
+                modeleNom = "Grand boubou",
+                cadence = com.essama.dresscode.metier.Cadence.LONGUE,
+                statut = com.essama.dresscode.metier.Statut.LIVREE,
+                dateCommande = aujourdhui.minusDays(120),
+                dateLivraison = aujourdhui.minusDays(96),
+                mesures = mapOf(
+                    com.essama.dresscode.metier.Mesure.POITRINE.cle to "92",
+                    "Tour de tête" to "56",
+                ),
+                prixTotal = 65_000,
+                acompte = 65_000,
+                soldeRegle = true,
+                livreeLe = System.currentTimeMillis() - 96L * 86_400_000,
+                photo = photoSemee,
+            ),
+        )
     }
 
     /* On vise les etiquettes de test et non les libelles : « Aujourd'hui »
@@ -246,24 +295,36 @@ class CapturesTest {
         regle.onNodeWithTag("prix-modele").performTextInput("45000")
         capturerFeuille("05-fiche-modele", etiquette = "feuille-modele")
         etape("05 feuille modele")
+
+        /* Le choix de la source. On l'ouvre et on l'annule : appuyer
+           sur « Prendre une photo » lancerait l'appareil photo du
+           telephone, une autre application, que ce parcours n'a pas a
+           piloter. Ce qui est verifie ici, c'est que les deux chemins
+           sont offerts. */
+        regle.onNodeWithTag("photo-modele").performClick()
+        capturerFeuille("06-choix-photo", etiquette = "choix-photo")
+        etape("06 choix appareil photo ou galerie")
+        regle.onNodeWithText("Annuler").performClick()
+        regle.waitForIdle()
+
         regle.onNodeWithTag("enregistrer-modele").performClick()
         attendreFermeture("feuille-modele")
-        capturer("06-catalogue")
-        etape("06 catalogue rempli")
+        capturer("07-catalogue")
+        etape("07 catalogue rempli")
 
         /* La creation de commande, avec un catalogue qui a de quoi
            proposer : le bouton n'apparait que dans ce cas. */
         onglet("aujourdhui").performClick()
         regle.waitForIdle()
         regle.onNodeWithTag("action-principale").performClick()
-        capturer("07-nouvelle-commande")
-        etape("07 nouvelle commande")
+        capturer("08-nouvelle-commande")
+        etape("08 nouvelle commande")
 
         regle.onNodeWithTag("liste-nouvelle-commande")
             .performScrollToNode(hasTestTag("choisir-modele"))
         regle.onNodeWithTag("choisir-modele").performClick()
-        capturerFeuille("08-catalogue-choix", etiquette = "feuille-catalogue")
-        etape("08 choix au catalogue")
+        capturerFeuille("09-catalogue-choix", etiquette = "feuille-catalogue")
+        etape("09 choix au catalogue")
         /* Choisir un modele ferme la feuille et remplit l'etape 3. */
         regle.onNodeWithText("Boubou brodé").performClick()
         attendreFermeture("feuille-catalogue")
@@ -276,7 +337,7 @@ class CapturesTest {
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithText("Choisir").fetchSemanticsNodes().isNotEmpty()
         }
-        etape("09 calendrier ouvert")
+        etape("10 calendrier ouvert")
         regle.onNodeWithText("Annuler").performClick()
         regle.waitForIdle()
         quitterEcran("liste-nouvelle-commande")
@@ -286,24 +347,38 @@ class CapturesTest {
            « Tour de tête », nommee a la main. */
         onglet("commandes").performClick()
         ouvrirRobeCeremonie()
-        capturer("10-commande")
-        etape("10 commande")
+        capturer("11-commande")
+        etape("11 commande")
 
         regle.onNodeWithTag("liste-commande")
             .performScrollToNode(hasTestTag("mesures-commande"))
         regle.onNodeWithTag("mesures-commande").performClick()
-        capturerFeuille("11-mesures", etiquette = "feuille-mesures")
-        etape("11 mesures")
+        capturerFeuille("12-mesures", etiquette = "feuille-mesures")
+        etape("12 mesures")
         regle.onNodeWithTag("enregistrer-mesures").performClick()
         attendreFermeture("feuille-mesures")
         etape("  mesures enregistrées")
 
-        /* La fiche envoyee a la cliente, en dernier : son bouton
-           ouvre WhatsApp, donc on ne l'appuie pas, et rien ne suit.
+        /* L'historique : ce que le couturier ouvre quand une cliente
+           revient. Les vignettes y sont — c'est la que la photo se
+           voit —, et chaque ligne mene au detail. */
+        quitterEcran("liste-commande")
+        onglet("commandes").performClick()
+        regle.waitForIdle()
+        /* Le libelle du filtre porte son compte : « Historique  1 ». */
+        regle.onNodeWithText("Historique", substring = true).performClick()
+        regle.waitForIdle()
+        capturer("13-historique")
+        etape("13 historique")
 
-           On remonte d'abord : la liste est restee la ou on l'avait
-           laissee, en bas sur les mesures, et « Envoyer la fiche » est
-           en haut avec le bouton de statut. */
+        /* Depuis l'historique, on ouvre le detail. C'est le geste que
+           l'application devait permettre. */
+        regle.onNodeWithText("Grand boubou").performClick()
+        regle.waitForIdle()
+        etape("  detail d'une commande livrée")
+
+        /* La fiche envoyee a la cliente, en dernier : son bouton
+           ouvre WhatsApp, donc on ne l'appuie pas, et rien ne suit. */
         regle.onNodeWithTag("liste-commande")
             .performScrollToNode(hasTestTag("envoyer-fiche"))
         regle.onNodeWithTag("envoyer-fiche").performClick()
@@ -311,8 +386,8 @@ class CapturesTest {
         regle.waitUntil(timeoutMillis = 15_000) {
             regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
         }
-        capturerFeuille("12-recapitulatif", etiquette = "feuille-recapitulatif")
-        etape("12 recapitulatif")
+        capturerFeuille("14-recapitulatif", etiquette = "feuille-recapitulatif")
+        etape("14 recapitulatif")
     }
 
     private fun ouvrirRobeCeremonie() {

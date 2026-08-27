@@ -23,6 +23,7 @@ import com.essama.dresscode.charte.Espace
 import com.essama.dresscode.charte.IconeSymbole
 import com.essama.dresscode.charte.Icones
 import com.essama.dresscode.charte.Taille
+import com.essama.dresscode.metier.Commande
 import com.essama.dresscode.metier.Statut
 import com.essama.dresscode.metier.anciennete
 import com.essama.dresscode.metier.delai
@@ -36,6 +37,7 @@ import com.essama.dresscode.ui.LigneInfo
 import com.essama.dresscode.ui.ModeleVue
 import com.essama.dresscode.ui.Pastille
 import com.essama.dresscode.ui.Route
+import com.essama.dresscode.ui.Vignette
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -179,6 +181,7 @@ fun EcranClient(
                         delai(commande.dateLivraison),
                         if (commande.reste > 0) "reste ${montant(commande.reste)}" else null,
                     ).joinToString(" · "),
+                    debut = { VignetteCommande(modeleVue, commande) },
                     surClic = { navigation.navigate(Route.commande(commande.id)) },
                 )
             }
@@ -187,9 +190,12 @@ fun EcranClient(
         if (passees.isNotEmpty()) {
             item { SousTitre("Historique — ${passees.size} commande${if (passees.size > 1) "s" else ""}") }
             items(passees, key = { it.id }) { commande ->
+                /* « Je vous refais la meme que l'an dernier ? » — la
+                   vignette repond avant qu'on ouvre la fiche. */
                 CarteLien(
                     titre = commande.modeleNom,
                     detail = "${moisAnnee(commande.dateLivraison)} · ${montant(commande.prixTotal)}",
+                    debut = { VignetteCommande(modeleVue, commande) },
                     surClic = { navigation.navigate(Route.commande(commande.id)) },
                 )
             }
@@ -237,6 +243,21 @@ fun EcranClient(
                 mesuresOuvertes = false
                 message("Mesures enregistrées")
             },
+        )
+    }
+}
+
+/* Le vetement, ou a defaut l'icone du stade ou il en est. */
+@Composable
+private fun VignetteCommande(modeleVue: ModeleVue, commande: Commande) {
+    Vignette(
+        fichier = commande.photo?.let { modeleVue.depot.photos.fichier(it) },
+        description = commande.modeleNom,
+    ) {
+        IconeSymbole(
+            icone = iconeDe(commande.statut),
+            taille = Taille.normale,
+            couleur = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

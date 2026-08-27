@@ -41,6 +41,7 @@ import com.essama.dresscode.ui.CarteLien
 import com.essama.dresscode.ui.EtatVide
 import com.essama.dresscode.ui.ModeleVue
 import com.essama.dresscode.ui.Route
+import com.essama.dresscode.ui.Vignette
 
 /*
  * Les filtres reprennent exactement les blocs d'« Aujourd'hui » :
@@ -62,6 +63,7 @@ private val filtres = listOf(
     Filtre("en_confection", Statut.EN_CONFECTION.libelle) { it.commande.statut == Statut.EN_CONFECTION },
     Filtre("prete", Statut.PRETE.libelle) { it.commande.statut == Statut.PRETE },
     Filtre("impayees", "Impayées") { it.etat.reste > 0 },
+    Filtre("historique", "Historique") { it.commande.statut == Statut.LIVREE },
     Filtre("toutes", "Toutes") { true },
 )
 
@@ -81,12 +83,22 @@ fun EcranCommandes(
     /* Le plus urgent en haut, toujours : une liste triee par date de
        creation obligerait a la parcourir en entier pour trouver ce
        qui brule. */
-    val visibles = lignes
-        .filter(filtre.garde)
-        .sortedWith(
-            compareBy<Ligne> { if (it.commande.statut == Statut.LIVREE) 1 else 0 }
-                .thenBy { it.etat.joursRestants },
-        )
+    val visibles = if (filtre.cle == "historique") {
+        /* L'historique se lit a l'envers du reste : ce qu'on cherche,
+           c'est la derniere robe faite pour cette cliente, pas la
+           premiere de l'annee. */
+        lignes.filter(filtre.garde)
+            .sortedWith(
+                compareByDescending<Ligne> { it.commande.dateLivraison }
+                    .thenByDescending { it.commande.livreeLe ?: 0L },
+            )
+    } else {
+        lignes.filter(filtre.garde)
+            .sortedWith(
+                compareBy<Ligne> { if (it.commande.statut == Statut.LIVREE) 1 else 0 }
+                    .thenBy { it.etat.joursRestants },
+            )
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -126,13 +138,22 @@ fun EcranCommandes(
 
         items(visibles, key = { it.commande.id }) { ligne ->
             val client = clients.firstOrNull { it.id == ligne.commande.clientId }
+            val photo = ligne.commande.photo?.let { modeleVue.depot.photos.fichier(it) }
             CarteLien(
                 titre = ligne.commande.modeleNom,
                 detail = listOfNotNull(
                     client?.nom ?: "Cliente supprimée",
+                    /* La photo remplace la pastille : le statut, qu'elle
+                       portait, revient ici en toutes lettres. */
+                    if (photo != null) ligne.commande.statut.libelle else null,
                     if (ligne.etat.reste > 0) "reste ${montant(ligne.etat.reste)}" else null,
                 ).joinToString(" · "),
-                debut = { JetonStatut(ligne.commande.statut) },
+                debut = {
+                    Vignette(
+                        fichier = photo,
+                        description = ligne.commande.modeleNom,
+                    ) { JetonStatut(ligne.commande.statut) }
+                },
                 fin = { Echeance(ligne) },
                 surClic = { navigation.navigate(Route.commande(ligne.commande.id)) },
             )
@@ -195,6 +216,7 @@ private fun messageVide(filtre: String) = when (filtre) {
     "retard" -> "Aucun retard."
     "aujourdhui" -> "Aucune livraison aujourd’hui."
     "impayees" -> "Tout est encaissé."
+    "historique" -> "Aucune commande livrée pour le moment."
     "toutes" -> "Aucune commande enregistrée."
     else -> "Aucune commande à ce stade."
 }

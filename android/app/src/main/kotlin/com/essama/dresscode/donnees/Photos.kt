@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -51,6 +52,21 @@ class Photos(private val contexte: Context) {
         BitmapFactory.decodeFile(cible.absolutePath)
     }
 
+    /*
+     * L'appareil photo du telephone ecrit lui-meme son cliche : il
+     * lui faut un fichier a lui, et le droit d'y ecrire. Le cache
+     * suffit — la photo n'y reste que le temps d'etre reduite et
+     * rangee dans le dossier prive.
+     */
+    fun fichierDePrise(): File {
+        val prises = File(contexte.cacheDir, "prises").apply { mkdirs() }
+        return File(prises, "${UUID.randomUUID()}.jpg")
+    }
+
+    /** Adresse que l'application photo pourra ouvrir en ecriture. */
+    fun adressePartagee(fichier: File): Uri =
+        FileProvider.getUriForFile(contexte, "${contexte.packageName}.fichiers", fichier)
+
     fun supprimer(nom: String?) {
         if (nom == null) return
         fichier(nom).delete()
@@ -61,9 +77,13 @@ class Photos(private val contexte: Context) {
            l'image pleine taille en memoire, ce qui ferait tomber
            l'application sur un telephone d'entree de gamme. */
         val dimensions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contexte.contentResolver.openInputStream(source)?.use {
-            BitmapFactory.decodeStream(it, null, dimensions)
-        } ?: return null
+        /* Attention au piege : avec inJustDecodeBounds, decodeStream
+           rend toujours null — c'est son role, il ne remplit que les
+           dimensions. Tester ce null-la revenait a jeter chaque photo
+           choisie par le couturier. On ne verifie donc que le flux. */
+        val mesure = contexte.contentResolver.openInputStream(source) ?: return null
+        mesure.use { BitmapFactory.decodeStream(it, null, dimensions) }
+        if (dimensions.outWidth <= 0 || dimensions.outHeight <= 0) return null
 
         val options = BitmapFactory.Options().apply {
             inSampleSize = facteurReduction(dimensions.outWidth, dimensions.outHeight)

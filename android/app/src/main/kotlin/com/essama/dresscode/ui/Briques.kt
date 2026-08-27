@@ -21,7 +21,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.essama.dresscode.charte.Espace
@@ -29,6 +31,8 @@ import com.essama.dresscode.charte.Icone
 import com.essama.dresscode.charte.IconeSymbole
 import com.essama.dresscode.charte.Rayon
 import com.essama.dresscode.charte.Taille
+import coil.compose.AsyncImage
+import java.io.File
 
 /*
  * Les quelques briques que plusieurs ecrans partagent. Rien ici ne
@@ -279,4 +283,37 @@ fun LigneInfo(
             },
         )
     }
+}
+
+/**
+ * La vignette du vetement, au debut d'une ligne de commande.
+ *
+ * Un couturier ne reconnait pas ses commandes a leur nom — « Robe
+ * ceremonie » revient dix fois dans l'annee. Il les reconnait au
+ * vetement. Sans photo, la pastille du statut reste : une liste de
+ * carres gris ne dirait rien.
+ */
+@Composable
+fun Vignette(
+    fichier: File?,
+    description: String,
+    modifier: Modifier = Modifier,
+    taille: Int = 48,
+    repli: @Composable () -> Unit,
+) {
+    /* Un fichier disparu — une sauvegarde restauree sans les images,
+       un nettoyage de stockage — laisserait un carre vide. La pastille
+       de statut reprend sa place. */
+    if (fichier == null || !fichier.exists()) {
+        repli()
+        return
+    }
+    AsyncImage(
+        model = fichier,
+        contentDescription = description,
+        contentScale = ContentScale.Crop,
+        modifier = modifier
+            .size(taille.dp)
+            .clip(RoundedCornerShape(Rayon.md)),
+    )
 }
