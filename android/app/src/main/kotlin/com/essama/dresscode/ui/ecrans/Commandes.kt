@@ -37,6 +37,7 @@ import com.essama.dresscode.metier.Ligne
 import com.essama.dresscode.metier.Statut
 import com.essama.dresscode.metier.delai
 import com.essama.dresscode.metier.etat
+import com.essama.dresscode.metier.moisAnnee
 import com.essama.dresscode.metier.montant
 import com.essama.dresscode.ui.CarteLien
 import com.essama.dresscode.ui.EtatVide
@@ -145,7 +146,15 @@ fun EcranCommandes(
                 titre = ligne.commande.modeleNom,
                 detail = listOfNotNull(
                     client?.nom ?: "Cliente supprimée",
-                    if (ligne.etat.reste > 0) "reste ${montant(ligne.etat.reste)}" else null,
+                    when {
+                        ligne.etat.reste > 0 -> "reste ${montant(ligne.etat.reste)}"
+                        /* Rien a reclamer sur une commande livree : c'est
+                           alors ce qu'elle a rapporte qui interesse, quand
+                           on relit l'annee. */
+                        ligne.commande.statut == Statut.LIVREE ->
+                            montant(ligne.commande.prixTotal)
+                        else -> null
+                    },
                     /* La photo remplace la pastille : le statut, qu'elle
                        portait, revient ici en toutes lettres — mais en
                        dernier. La ligne se coupe par la fin, et ce que
@@ -199,8 +208,12 @@ private fun Echeance(ligne: Ligne) {
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Text(
+        /* Une commande livree n'a plus d'echeance : elle a une date.
+           « Livrée » figure deja dans la ligne du dessous, et repeter
+           le mot ne dirait pas ce qu'un historique doit dire —
+           quand. */
         text = if (ligne.commande.statut == Statut.LIVREE) {
-            "Livrée"
+            moisAnnee(ligne.commande.dateLivraison)
         } else {
             delai(ligne.commande.dateLivraison)
         },
