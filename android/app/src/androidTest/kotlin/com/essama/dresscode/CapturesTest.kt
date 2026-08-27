@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -372,8 +373,12 @@ class CapturesTest {
         quitterEcran("liste-commande")
         onglet("commandes").performClick()
         regle.waitForIdle()
-        /* Le libelle du filtre porte son compte : « Historique  1 ». */
-        regle.onNodeWithText("Historique", substring = true).performClick()
+        /* La rangee de filtres defile : « Historique » est le
+           septieme, hors de l'ecran. Sans l'amener a l'ecran d'abord,
+           l'appui tombe dans le vide — le filtre ne change pas, et
+           c'est deux etapes plus loin que le parcours s'arrete, sur
+           une commande qui n'est pas affichee. */
+        regle.onNodeWithTag("filtre-historique").performScrollTo().performClick()
         regle.waitForIdle()
         capturer("13-historique")
         etape("13 historique")

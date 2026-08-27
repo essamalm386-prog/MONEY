@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
@@ -120,6 +121,7 @@ fun EcranCommandes(
                     FilterChip(
                         selected = candidat.cle == choisi,
                         onClick = { choisi = candidat.cle },
+                        modifier = Modifier.testTag("filtre-${candidat.cle}"),
                         label = {
                             Text(
                                 if (nombre > 0) "${candidat.libelle}  $nombre" else candidat.libelle,
@@ -143,10 +145,13 @@ fun EcranCommandes(
                 titre = ligne.commande.modeleNom,
                 detail = listOfNotNull(
                     client?.nom ?: "Cliente supprimée",
-                    /* La photo remplace la pastille : le statut, qu'elle
-                       portait, revient ici en toutes lettres. */
-                    if (photo != null) ligne.commande.statut.libelle else null,
                     if (ligne.etat.reste > 0) "reste ${montant(ligne.etat.reste)}" else null,
+                    /* La photo remplace la pastille : le statut, qu'elle
+                       portait, revient ici en toutes lettres — mais en
+                       dernier. La ligne se coupe par la fin, et ce que
+                       le couturier ne veut pas perdre, c'est la somme
+                       qu'on lui doit. */
+                    if (photo != null) ligne.commande.statut.libelle else null,
                 ).joinToString(" · "),
                 debut = {
                     Vignette(
