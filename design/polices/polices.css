@@ -1,0 +1,96 @@
+/* ============================================================
+   POLICES — Roboto Flex et Roboto (Google, licence Apache 2.0)
+   Toutes variables : une requete couvre toutes les graisses.
+   ------------------------------------------------------------
+   Deux familles seulement, comme le prescrit la charte :
+   Roboto Flex pour les titres, Roboto pour tout le reste.
+   Les familles Serif, Mono et Condensed du kit ne sont pas
+   embarquees — rien dans l'application ne les utilise.
+   ============================================================ */
+
+/* ---------- ROBOTO FLEX — titres et identite ---------- */
+@font-face {
+  font-family: 'Roboto Flex Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 1000;
+  font-stretch: 25% 151%;
+  src: url('./roboto-flex/roboto-flex-latin-full-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191,
+                 U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Roboto Flex Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 1000;
+  font-stretch: 25% 151%;
+  src: url('./roboto-flex/roboto-flex-latin-ext-full-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+                 U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+                 U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ---------- ROBOTO ----------
+
+/* ---------- ROBOTO — texte courant et interface ---------- */
+@font-face {
+  font-family: 'Roboto Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./roboto/roboto-latin-standard-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+                 U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191,
+                 U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+@font-face {
+  font-family: 'Roboto Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./roboto/roboto-latin-ext-standard-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+                 U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+                 U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+
+}
+
+/* ============================================================
+   CLASSES UTILITAIRES TYPOGRAPHIQUES
+   Les 15 styles de l'echelle Material Design 3.
+   Necessite tokens.css.
+   ============================================================ */
+
+.md-display-large,
+.md-display-medium,
+.md-display-small,
+.md-headline-large,
+.md-headline-medium,
+.md-headline-small {
+  font-family: var(--md-sys-typescale-font-brand);
+  margin: 0;
+}
+
+.md-title-large, .md-title-medium, .md-title-small,
+.md-body-large, .md-body-medium, .md-body-small,
+.md-label-large, .md-label-medium, .md-label-small {
+  font-family: var(--md-sys-typescale-font-plain);
+  margin: 0;
+}
+
+.md-display-large   { font-size: var(--md-sys-typescale-display-large-size);   line-height: var(--md-sys-typescale-display-large-line-height);   font-weight: var(--md-sys-typescale-display-large-weight);   letter-spacing: var(--md-sys-typescale-display-large-tracking); }
+.md-display-medium  { font-size: var(--md-sys-typescale-display-medium-size);  line-height: var(--md-sys-typescale-display-medium-line-height);  font-weight: var(--md-sys-typescale-display-medium-weight);  letter-spacing: var(--md-sys-typescale-display-medium-tracking); }
+.md-display-small   { font-size: var(--md-sys-typescale-display-small-size);   line-height: var(--md-sys-typescale-display-small-line-height);   font-weight: var(--md-sys-typescale-display-small-weight);   letter-spacing: var(--md-sys-typescale-display-small-tracking); }
+.md-headline-large  { font-size: var(--md-sys-typescale-headline-large-size);  line-height: var(--md-sys-typescale-headline-large-line-height);  font-weight: var(--md-sys-typescale-headline-large-weight);  letter-spacing: var(--md-sys-typescale-headline-large-tracking); }
+.md-headline-medium { font-size: var(--md-sys-typescale-headline-medium-size); line-height: var(--md-sys-typescale-headline-medium-line-height); font-weight: var(--md-sys-typescale-headline-medium-weight); letter-spacing: var(--md-sys-typescale-headline-medium-tracking); }
+.md-headline-small  { font-size: var(--md-sys-typescale-headline-small-size);  line-height: var(--md-sys-typescale-headline-small-line-height);  font-weight: var(--md-sys-typescale-headline-small-weight);  letter-spacing: var(--md-sys-typescale-headline-small-tracking); }
+.md-title-large     { font-size: var(--md-sys-typescale-title-large-size);     line-height: var(--md-sys-typescale-title-large-line-height);     font-weight: var(--md-sys-typescale-title-large-weight);     letter-spacing: var(--md-sys-typescale-title-large-tracking); }
+.md-title-medium    { font-size: var(--md-sys-typescale-title-medium-size);    line-height: var(--md-sys-typescale-title-medium-line-height);    font-weight: var(--md-sys-typescale-title-medium-weight);    letter-spacing: var(--md-sys-typescale-title-medium-tracking); }
+.md-title-small     { font-size: var(--md-sys-typescale-title-small-size);     line-height: var(--md-sys-typescale-title-small-line-height);     font-weight: var(--md-sys-typescale-title-small-weight);     letter-spacing: var(--md-sys-typescale-title-small-tracking); }
+.md-body-large      { font-size: var(--md-sys-typescale-body-large-size);      line-height: var(--md-sys-typescale-body-large-line-height);      font-weight: var(--md-sys-typescale-body-large-weight);      letter-spacing: var(--md-sys-typescale-body-large-tracking); }
+.md-body-medium     { font-size: var(--md-sys-typescale-body-medium-size);     line-height: var(--md-sys-typescale-body-medium-line-height);     font-weight: var(--md-sys-typescale-body-medium-weight);     letter-spacing: var(--md-sys-typescale-body-medium-tracking); }
+.md-body-small      { font-size: var(--md-sys-typescale-body-small-size);      line-height: var(--md-sys-typescale-body-small-line-height);      font-weight: var(--md-sys-typescale-body-small-weight);      letter-spacing: var(--md-sys-typescale-body-small-tracking); }
+.md-label-large     { font-size: var(--md-sys-typescale-label-large-size);     line-height: var(--md-sys-typescale-label-large-line-height);     font-weight: var(--md-sys-typescale-label-large-weight);     letter-spacing: var(--md-sys-typescale-label-large-tracking); }
+.md-label-medium    { font-size: var(--md-sys-typescale-label-medium-size);    line-height: var(--md-sys-typescale-label-medium-line-height);    font-weight: var(--md-sys-typescale-label-medium-weight);    letter-spacing: var(--md-sys-typescale-label-medium-tracking); }
+.md-label-small     { font-size: var(--md-sys-typescale-label-small-size);     line-height: var(--md-sys-typescale-label-small-line-height);     font-weight: var(--md-sys-typescale-label-small-weight);     letter-spacing: var(--md-sys-typescale-label-small-tracking); }

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DRESS CODE</title>
+<meta name="description" content="Le cahier du couturier : clients, mesures, modèles, commandes et rappels de livraison.">
+<meta name="theme-color" content="#5452b4">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="app/img/icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="app/img/icone-192.png">
+
+<!-- Ordre obligatoire : tokens.css definit les variables que les trois autres consomment. -->
+<link rel="stylesheet" href="design/tokens/tokens.css">
+<link rel="stylesheet" href="design/polices/polices.css">
+<link rel="stylesheet" href="design/icones/icones.css">
+<link rel="stylesheet" href="design/composants/composants.css">
+<link rel="stylesheet" href="app/app.css">
+</head>
+<body>
+
+<a class="lien-evitement" href="#ecran">Aller au contenu</a>
+
+<header class="md-appbar barre" id="barre"></header>
+
+<main id="ecran" class="ecran" tabindex="-1">
+  <div id="colonne" class="colonne"></div>
+</main>
+
+<button class="md-fab fab" id="fab" hidden>
+  <span class="material-symbols-rounded md-icon-24" aria-hidden="true">&#xe145;</span>
+  <span class="fab-libelle">Commande</span>
+</button>
+
+<nav class="md-navbar navigation" id="navigation" aria-label="Sections"></nav>
+
+<script type="module" src="app/js/app.js"></script>
+</body>
+</html>

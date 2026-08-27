@@ -1,0 +1,75 @@
+# Icones Material Symbols utilisees par DRESS CODE.
+# Une par ligne. Sert a sous-ensembler la police (5,3 Mo -> quelques Ko).
+# Apres ajout d'une icone dans l'interface, relancer :
+#   node outils/sous-ensembler-icones.mjs
+
+# Navigation principale
+today
+checkroom
+group
+photo_library
+storefront
+
+# Barre d'application et navigation
+arrow_back
+close
+search
+more_vert
+contrast
+menu
+chevron_right
+expand_more
+arrow_forward
+open_in_new
+
+# Actions
+add
+edit
+delete
+check
+check_circle
+save
+content_copy
+download
+share
+send
+call
+person_add
+photo_camera
+add_photo_alternate
+image
+calendar_month
+filter_list
+visibility
+
+# Statuts de commande
+content_cut
+iron
+inventory_2
+
+# Signaux et alertes
+schedule
+warning
+priority_high
+error
+info
+notifications
+notifications_active
+
+# Metier
+straighten
+payments
+person
+upload
+receipt_long
+sell
+history
+picture_as_pdf
+
+# Etats vides, hors ligne, sauvegarde
+celebration
+cloud_off
+wifi_off
+backup
+settings_backup_restore
+sentiment_satisfied

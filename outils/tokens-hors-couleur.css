@@ -1,0 +1,137 @@
+
+  /* ---------- Typographie ---------- */
+  --md-sys-typescale-font-brand: 'Roboto Flex Variable', 'Roboto Flex', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --md-sys-typescale-font-plain: 'Roboto Variable', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --md-sys-typescale-font-serif: 'Roboto Serif Variable', 'Roboto Serif', Georgia, serif;
+  --md-sys-typescale-font-mono: 'Roboto Mono Variable', 'Roboto Mono', ui-monospace, Menlo, Consolas, monospace;
+  --md-sys-typescale-font-condensed: 'Roboto Condensed Variable', 'Roboto Condensed', 'Arial Narrow', sans-serif;
+
+  --md-sys-typescale-display-large-size: 57px;
+  --md-sys-typescale-display-large-line-height: 64px;
+  --md-sys-typescale-display-large-weight: 400;
+  --md-sys-typescale-display-large-tracking: -0.25px;
+  --md-sys-typescale-display-medium-size: 45px;
+  --md-sys-typescale-display-medium-line-height: 52px;
+  --md-sys-typescale-display-medium-weight: 400;
+  --md-sys-typescale-display-medium-tracking: 0px;
+  --md-sys-typescale-display-small-size: 36px;
+  --md-sys-typescale-display-small-line-height: 44px;
+  --md-sys-typescale-display-small-weight: 400;
+  --md-sys-typescale-display-small-tracking: 0px;
+  --md-sys-typescale-headline-large-size: 32px;
+  --md-sys-typescale-headline-large-line-height: 40px;
+  --md-sys-typescale-headline-large-weight: 400;
+  --md-sys-typescale-headline-large-tracking: 0px;
+  --md-sys-typescale-headline-medium-size: 28px;
+  --md-sys-typescale-headline-medium-line-height: 36px;
+  --md-sys-typescale-headline-medium-weight: 400;
+  --md-sys-typescale-headline-medium-tracking: 0px;
+  --md-sys-typescale-headline-small-size: 24px;
+  --md-sys-typescale-headline-small-line-height: 32px;
+  --md-sys-typescale-headline-small-weight: 400;
+  --md-sys-typescale-headline-small-tracking: 0px;
+  --md-sys-typescale-title-large-size: 22px;
+  --md-sys-typescale-title-large-line-height: 28px;
+  --md-sys-typescale-title-large-weight: 500;
+  --md-sys-typescale-title-large-tracking: 0px;
+  --md-sys-typescale-title-medium-size: 16px;
+  --md-sys-typescale-title-medium-line-height: 24px;
+  --md-sys-typescale-title-medium-weight: 500;
+  --md-sys-typescale-title-medium-tracking: 0.15px;
+  --md-sys-typescale-title-small-size: 14px;
+  --md-sys-typescale-title-small-line-height: 20px;
+  --md-sys-typescale-title-small-weight: 500;
+  --md-sys-typescale-title-small-tracking: 0.1px;
+  --md-sys-typescale-body-large-size: 16px;
+  --md-sys-typescale-body-large-line-height: 24px;
+  --md-sys-typescale-body-large-weight: 400;
+  --md-sys-typescale-body-large-tracking: 0.5px;
+  --md-sys-typescale-body-medium-size: 14px;
+  --md-sys-typescale-body-medium-line-height: 20px;
+  --md-sys-typescale-body-medium-weight: 400;
+  --md-sys-typescale-body-medium-tracking: 0.25px;
+  --md-sys-typescale-body-small-size: 12px;
+  --md-sys-typescale-body-small-line-height: 16px;
+  --md-sys-typescale-body-small-weight: 400;
+  --md-sys-typescale-body-small-tracking: 0.4px;
+  --md-sys-typescale-label-large-size: 14px;
+  --md-sys-typescale-label-large-line-height: 20px;
+  --md-sys-typescale-label-large-weight: 500;
+  --md-sys-typescale-label-large-tracking: 0.1px;
+  --md-sys-typescale-label-medium-size: 12px;
+  --md-sys-typescale-label-medium-line-height: 16px;
+  --md-sys-typescale-label-medium-weight: 500;
+  --md-sys-typescale-label-medium-tracking: 0.5px;
+  --md-sys-typescale-label-small-size: 11px;
+  --md-sys-typescale-label-small-line-height: 16px;
+  --md-sys-typescale-label-small-weight: 500;
+  --md-sys-typescale-label-small-tracking: 0.5px;
+
+  /* ---------- Espacements (grille 4px) ---------- */
+  --md-sys-spacing-0: 0px;
+  --md-sys-spacing-1: 4px;
+  --md-sys-spacing-2: 8px;
+  --md-sys-spacing-3: 12px;
+  --md-sys-spacing-4: 16px;
+  --md-sys-spacing-5: 20px;
+  --md-sys-spacing-6: 24px;
+  --md-sys-spacing-7: 28px;
+  --md-sys-spacing-8: 32px;
+  --md-sys-spacing-10: 40px;
+  --md-sys-spacing-12: 48px;
+  --md-sys-spacing-16: 64px;
+  --md-sys-spacing-20: 80px;
+  --md-sys-spacing-24: 96px;
+
+  /* ---------- Rayons de bordure ---------- */
+  --md-sys-shape-none: 0px;
+  --md-sys-shape-xs: 4px;
+  --md-sys-shape-sm: 8px;
+  --md-sys-shape-md: 12px;
+  --md-sys-shape-lg: 16px;
+  --md-sys-shape-xl: 24px;
+  --md-sys-shape-2xl: 32px;
+  --md-sys-shape-3xl: 48px;
+  --md-sys-shape-full: 9999px;
+
+  /* ---------- Elevations ---------- */
+  --md-sys-elevation-0: none;
+  --md-sys-elevation-1: 0 1px 2px 0 rgba(0,0,0,0.30), 0 1px 3px 1px rgba(0,0,0,0.15);
+  --md-sys-elevation-2: 0 1px 2px 0 rgba(0,0,0,0.30), 0 2px 6px 2px rgba(0,0,0,0.15);
+  --md-sys-elevation-3: 0 4px 8px 3px rgba(0,0,0,0.15), 0 1px 3px 0 rgba(0,0,0,0.30);
+  --md-sys-elevation-4: 0 6px 10px 4px rgba(0,0,0,0.15), 0 2px 3px 0 rgba(0,0,0,0.30);
+  --md-sys-elevation-5: 0 8px 12px 6px rgba(0,0,0,0.15), 0 4px 4px 0 rgba(0,0,0,0.30);
+
+  /* ---------- Motion : durees ---------- */
+  --md-sys-motion-duration-short-1: 50ms;
+  --md-sys-motion-duration-short-2: 100ms;
+  --md-sys-motion-duration-short-3: 150ms;
+  --md-sys-motion-duration-short-4: 200ms;
+  --md-sys-motion-duration-medium-1: 250ms;
+  --md-sys-motion-duration-medium-2: 300ms;
+  --md-sys-motion-duration-medium-3: 350ms;
+  --md-sys-motion-duration-medium-4: 400ms;
+  --md-sys-motion-duration-long-1: 450ms;
+  --md-sys-motion-duration-long-2: 500ms;
+  --md-sys-motion-duration-long-3: 550ms;
+  --md-sys-motion-duration-long-4: 600ms;
+  --md-sys-motion-duration-extra-long-1: 700ms;
+  --md-sys-motion-duration-extra-long-2: 800ms;
+  --md-sys-motion-duration-extra-long-3: 900ms;
+  --md-sys-motion-duration-extra-long-4: 1000ms;
+
+  /* ---------- Motion : courbes ---------- */
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-sys-motion-easing-legacy: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---------- Points de rupture ---------- */
+  --md-sys-breakpoint-compact: 0px;
+  --md-sys-breakpoint-medium: 600px;
+  --md-sys-breakpoint-expanded: 840px;
+  --md-sys-breakpoint-large: 1200px;
+  --md-sys-breakpoint-extra-large: 1600px;

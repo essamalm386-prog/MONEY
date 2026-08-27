@@ -1,0 +1,76 @@
+# Publie l'application sur GitHub Pages.
+#
+# Seuls les fichiers dont l'application a besoin sont publies : le
+# projet Android, les outils et les captures n'ont rien a faire sur
+# le site. Les verifications tournent avant, pour ne jamais mettre en
+# ligne une version cassee — l'application est censee fonctionner
+# dans un atelier sans reseau, une coquille incomplete s'y verrait
+# tout de suite.
+
+name: Publier le site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Une publication a la fois ; on ne coupe pas celle qui est en cours.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  verifier:
+    name: Vérifier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Moteur métier et cohérence du projet
+        run: node outils/verifier.mjs
+
+      - name: Installer Playwright
+        run: |
+          npm install --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+
+      - name: Parcours réels dans le navigateur
+        run: node outils/verifier-navigateur.mjs
+
+  publier:
+    name: Publier
+    needs: verifier
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rassembler le site
+        run: |
+          mkdir -p site
+          cp -r index.html manifest.webmanifest sw.js app design site/
+          # .nojekyll : sans lui, Jekyll masque .well-known/ et la
+          # verification de l'application Android echoue.
+          touch site/.nojekyll
+          if [ -d .well-known ]; then cp -r .well-known site/; fi
+          du -sh site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploiement
+        uses: actions/deploy-pages@v4
