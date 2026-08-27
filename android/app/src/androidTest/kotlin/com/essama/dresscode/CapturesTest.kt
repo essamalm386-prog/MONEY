@@ -72,14 +72,6 @@ class CapturesTest {
         ecrire(nom, regle.onNodeWithTag(etiquette).captureToImage().asAndroidBitmap())
     }
 
-    /* Le retour passe par l'activite, pas par le systeme : une boite de
-       dialogue de l'emulateur — « Pixel Launcher isn't responding » en a
-       deja couvert une execution — vole le focus et fait echouer un
-       appui retour envoye au systeme. */
-    private fun retour() = regle.runOnUiThread {
-        regle.activity.onBackPressedDispatcher.onBackPressed()
-    }
-
     /* Un atelier realiste : un ecran vide ne montrerait rien de ce
        qui compte, et ne verifierait presque rien. */
     private fun semer() = runBlocking {
@@ -165,13 +157,24 @@ class CapturesTest {
        l'interface change au fil de la redaction. */
     private fun onglet(route: String) = regle.onNodeWithTag("onglet-$route")
 
-    /* Le retour ferme la feuille, mais l'animation continue : cliquer
-       trop tot, c'est cliquer sur le voile qui la couvre encore. */
-    private fun fermerFeuille(etiquette: String) {
-        retour()
+    /*
+     * Quitter un ecran qui porte une feuille ouverte.
+     *
+     * Le retour ne convient pas : il depile la navigation au lieu de
+     * fermer la feuille, et l'ecran d'apres n'est plus celui qu'on
+     * croit — c'est ce qui a fait echouer ce parcours. Changer
+     * d'onglet emmene la feuille avec l'ecran qui la porte.
+     *
+     * On attend qu'elle ait bien disparu : si l'onglet ne repondait
+     * pas sous le voile, l'echec doit se lire ici et pas trois gestes
+     * plus loin.
+     */
+    private fun quitterVers(route: String, feuille: String) {
+        onglet(route).performClick()
         regle.waitUntil(timeoutMillis = 10_000) {
-            regle.onAllNodesWithTag(etiquette).fetchSemanticsNodes().isEmpty()
+            regle.onAllNodesWithTag(feuille).fetchSemanticsNodes().isEmpty()
         }
+        regle.waitForIdle()
     }
 
     @Test
@@ -194,26 +197,24 @@ class CapturesTest {
            qui repond a cette invitation doit s'ouvrir pour de vrai. */
         regle.onNodeWithTag("action-principale").performClick()
         capturerFeuille("05-fiche-modele", etiquette = "feuille-modele")
-        fermerFeuille("feuille-modele")
 
-        /* Retour a l'accueil, puis creation : c'est le parcours qui
-           decide de l'adoption, il merite sa capture. */
-        onglet("aujourdhui").performClick()
-        regle.waitForIdle()
-        regle.onNodeWithTag("action-principale").performClick()
-        capturer("06-nouvelle-commande")
-        retour()
-        regle.waitForIdle()
+        quitterVers("commandes", feuille = "feuille-modele")
+        ouvrirRobeCeremonie()
+        capturer("06-commande")
+
+        /* Les mesures se corrigent depuis la commande : c'est ce que
+           l'ecran ne permettait pas. Les douze du metier y sont, plus
+           « Tour de tête », nommee a la main. */
+        regle.onNodeWithTag("liste-commande")
+            .performScrollToNode(hasTestTag("mesures-commande"))
+        regle.onNodeWithTag("mesures-commande").performClick()
+        capturerFeuille("07-mesures", etiquette = "feuille-mesures")
+        quitterVers("commandes", feuille = "feuille-mesures")
 
         /* La fiche envoyee a la cliente : le dessin passe par un
            Canvas hors Compose, c'est le seul endroit ou une capture
            verifie vraiment quelque chose. */
-        onglet("commandes").performClick()
-        regle.waitForIdle()
-        regle.onNodeWithText("Robe cérémonie").performClick()
-        regle.waitForIdle()
-        capturer("07-commande")
-
+        ouvrirRobeCeremonie()
         regle.onNodeWithTag("envoyer-fiche").performClick()
         /* L'apercu est dessine hors du fil principal : waitForIdle ne
            l'attend pas, il faut guetter le noeud lui-meme. */
@@ -221,33 +222,27 @@ class CapturesTest {
             regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
         }
         capturerFeuille("08-recapitulatif", etiquette = "feuille-recapitulatif")
-        fermerFeuille("feuille-recapitulatif")
 
-        /* Les mesures se corrigent depuis la commande : c'est ce que
-           l'ecran ne permettait pas, et la capture doit le montrer —
-           les douze du metier, plus « Tour de tête » nommee a la main. */
-        /* Le bouton est en bas d'une liste paresseuse : sans defiler
-           jusqu'a lui, il n'est meme pas compose. */
-        regle.onNodeWithTag("liste-commande")
-            .performScrollToNode(hasTestTag("mesures-commande"))
-        regle.onNodeWithTag("mesures-commande").performClick()
-        capturerFeuille("09-mesures", etiquette = "feuille-mesures")
-        fermerFeuille("feuille-mesures")
-
-        /* Le catalogue depuis la commande, et le calendrier : les deux
-           que le portage vers Android avait perdus. */
-        onglet("aujourdhui").performClick()
-        regle.waitForIdle()
+        /* Le parcours qui decide de l'adoption. */
+        quitterVers("aujourdhui", feuille = "feuille-recapitulatif")
         regle.onNodeWithTag("action-principale").performClick()
-        regle.waitForIdle()
+        capturer("09-nouvelle-commande")
+
+        /* Le calendrier en dernier : sa boite de dialogue vit dans sa
+           propre fenetre, et rien ne sait la refermer proprement
+           depuis un test. On verifie qu'elle s'ouvre, et on s'arrete
+           la. */
         regle.onNodeWithTag("liste-nouvelle-commande")
             .performScrollToNode(hasTestTag("choisir-date"))
         regle.onNodeWithTag("choisir-date").performClick()
-        /* La boite de dialogue du calendrier vit dans sa propre
-           fenetre et n'a pas d'etiquette a nous : on verifie qu'elle
-           s'ouvre par son bouton de validation, sans la capturer. */
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithText("Choisir").fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    private fun ouvrirRobeCeremonie() {
+        regle.waitForIdle()
+        regle.onNodeWithText("Robe cérémonie").performClick()
+        regle.waitForIdle()
     }
 }
