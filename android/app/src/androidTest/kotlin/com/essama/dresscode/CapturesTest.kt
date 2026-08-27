@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
 import kotlinx.coroutines.runBlocking
@@ -190,6 +191,25 @@ class CapturesTest {
      * comme un couturier. Le parcours teste alors l'application au
      * lieu de la contourner.
      */
+    /*
+     * Quitter un ecran plein.
+     *
+     * La barre d'onglets n'existe que sur les quatre onglets : sur la
+     * creation d'une commande ou sur une fiche, il n'y a ni barre ni
+     * fleche retour, et le retour du telephone est la seule sortie.
+     * C'est normal sur Android, et c'est exactement ce a quoi le
+     * retour sert — contrairement a la fermeture d'une feuille, ou il
+     * depile la navigation au lieu de fermer quoi que ce soit.
+     */
+    private fun quitterEcran(temoin: String) {
+        etape("  quitter l'écran (témoin $temoin)")
+        Espresso.pressBack()
+        regle.waitUntil(timeoutMillis = 10_000) {
+            regle.onAllNodesWithTag(temoin).fetchSemanticsNodes().isEmpty()
+        }
+        regle.waitForIdle()
+    }
+
     private fun attendreFermeture(etiquette: String) {
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithTag(etiquette).fetchSemanticsNodes().isEmpty()
@@ -259,6 +279,7 @@ class CapturesTest {
         etape("09 calendrier ouvert")
         regle.onNodeWithText("Annuler").performClick()
         regle.waitForIdle()
+        quitterEcran("liste-nouvelle-commande")
 
         /* Les mesures se corrigent depuis la commande : c'est ce que
            l'ecran ne permettait pas. Les douze du metier y sont, plus
