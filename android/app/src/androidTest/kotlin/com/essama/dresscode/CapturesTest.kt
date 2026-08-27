@@ -296,10 +296,18 @@ class CapturesTest {
         etape("11 mesures")
         regle.onNodeWithTag("enregistrer-mesures").performClick()
         attendreFermeture("feuille-mesures")
+        etape("  mesures enregistrées")
 
         /* La fiche envoyee a la cliente, en dernier : son bouton
-           ouvre WhatsApp, donc on ne l'appuie pas, et rien ne suit. */
+           ouvre WhatsApp, donc on ne l'appuie pas, et rien ne suit.
+
+           On remonte d'abord : la liste est restee la ou on l'avait
+           laissee, en bas sur les mesures, et « Envoyer la fiche » est
+           en haut avec le bouton de statut. */
+        regle.onNodeWithTag("liste-commande")
+            .performScrollToNode(hasTestTag("envoyer-fiche"))
         regle.onNodeWithTag("envoyer-fiche").performClick()
+        etape("  fiche demandée")
         regle.waitUntil(timeoutMillis = 15_000) {
             regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
         }
