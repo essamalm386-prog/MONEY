@@ -192,7 +192,7 @@ jobs:
 
           mkdir -p android
           find "$GITHUB_WORKSPACE/android/app/build/outputs/connected_android_test_additional_output" \
-            -name '*.png' -exec cp {} android/ \;
+            \( -name '*.png' -o -name '*.txt' \) -exec cp {} android/ \;
 
           cat > LISEZ-MOI.md <<TEXTE
           # Captures de l'application Android

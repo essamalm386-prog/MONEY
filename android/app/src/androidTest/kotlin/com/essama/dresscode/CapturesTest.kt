@@ -40,6 +40,25 @@ class CapturesTest {
        Android 11, et Gradle rapatrie ce stockage-ci tout seul. */
     private val stockage = TestStorage()
 
+    /*
+     * Journal d'avancement.
+     *
+     * Quand ce parcours echoue, le message d'assertion est dans les
+     * traces Gradle — et celles-ci sont tronquees avant lui la ou ce
+     * projet les lit. Sans savoir a quelle etape on s'est arrete, on
+     * corrige a l'aveugle et on brule un cycle de CI par hypothese.
+     * Ce fichier part avec les captures et dit la derniere etape
+     * franchie.
+     */
+    private val journal = StringBuilder()
+
+    private fun etape(quoi: String) {
+        journal.appendLine(quoi)
+        stockage.openOutputFile("dress-code/parcours.txt").use {
+            it.write(journal.toString().toByteArray())
+        }
+    }
+
     private fun ecrire(nom: String, image: Bitmap) {
         stockage.openOutputFile("dress-code/$nom.png").use {
             image.compress(Bitmap.CompressFormat.PNG, 100, it)
@@ -170,6 +189,7 @@ class CapturesTest {
      * plus loin.
      */
     private fun quitterVers(route: String, feuille: String) {
+        etape("  quitter vers $route (feuille $feuille)")
         onglet(route).performClick()
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithTag(feuille).fetchSemanticsNodes().isEmpty()
@@ -183,24 +203,30 @@ class CapturesTest {
         regle.waitForIdle()
 
         capturer("01-aujourdhui")
+        etape("01 aujourdhui")
 
         onglet("commandes").performClick()
         capturer("02-commandes")
+        etape("02 commandes")
 
         onglet("clients").performClick()
         capturer("03-clientes")
+        etape("03 clientes")
 
         onglet("modeles").performClick()
         capturer("04-modeles")
+        etape("04 modeles")
 
         /* Le catalogue vide invite a ajouter un modele : la feuille
            qui repond a cette invitation doit s'ouvrir pour de vrai. */
         regle.onNodeWithTag("action-principale").performClick()
         capturerFeuille("05-fiche-modele", etiquette = "feuille-modele")
+        etape("05 feuille modele")
 
         quitterVers("commandes", feuille = "feuille-modele")
         ouvrirRobeCeremonie()
         capturer("06-commande")
+        etape("06 commande")
 
         /* Les mesures se corrigent depuis la commande : c'est ce que
            l'ecran ne permettait pas. Les douze du metier y sont, plus
@@ -209,7 +235,13 @@ class CapturesTest {
             .performScrollToNode(hasTestTag("mesures-commande"))
         regle.onNodeWithTag("mesures-commande").performClick()
         capturerFeuille("07-mesures", etiquette = "feuille-mesures")
-        quitterVers("commandes", feuille = "feuille-mesures")
+        etape("07 mesures")
+        /* On repasse par un autre onglet avant de revenir : la barre
+           de navigation sauvegarde et restaure l'etat de chaque
+           onglet, donc rappuyer sur le sien ne ramene pas forcement a
+           sa racine. */
+        quitterVers("aujourdhui", feuille = "feuille-mesures")
+        onglet("commandes").performClick()
 
         /* La fiche envoyee a la cliente : le dessin passe par un
            Canvas hors Compose, c'est le seul endroit ou une capture
@@ -222,11 +254,15 @@ class CapturesTest {
             regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
         }
         capturerFeuille("08-recapitulatif", etiquette = "feuille-recapitulatif")
+        etape("08 recapitulatif")
 
         /* Le parcours qui decide de l'adoption. */
-        quitterVers("aujourdhui", feuille = "feuille-recapitulatif")
+        quitterVers("clients", feuille = "feuille-recapitulatif")
+        onglet("aujourdhui").performClick()
+        regle.waitForIdle()
         regle.onNodeWithTag("action-principale").performClick()
         capturer("09-nouvelle-commande")
+        etape("09 nouvelle commande")
 
         /* Le calendrier en dernier : sa boite de dialogue vit dans sa
            propre fenetre, et rien ne sait la refermer proprement
@@ -238,9 +274,11 @@ class CapturesTest {
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithText("Choisir").fetchSemanticsNodes().isNotEmpty()
         }
+        etape("10 calendrier ouvert")
     }
 
     private fun ouvrirRobeCeremonie() {
+        etape("  ouvrir Robe cérémonie")
         regle.waitForIdle()
         regle.onNodeWithText("Robe cérémonie").performClick()
         regle.waitForIdle()
