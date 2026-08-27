@@ -151,7 +151,14 @@ jobs:
           # Les captures sortent par le service de stockage de test, que
           # Gradle rapatrie dans les sorties de build : adb ne peut plus
           # lire le dossier externe d'une application depuis Android 11.
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          # « hide_error_dialogs » avant tout : le Pixel Launcher de
+          # l'image d'emulateur declenche parfois un ANR, et sa boite
+          # « isn't responding » se pose par-dessus l'application. Elle
+          # vole le focus au parcours et se glisse dans les captures.
+          # Ce reglage supprime ces boites, sans rien masquer de
+          # l'application elle-meme : un plantage de DRESS CODE ferait
+          # toujours echouer le test.
+          script: adb shell settings put global hide_error_dialogs 1 && ./gradlew --no-daemon connectedDebugAndroidTest
 
       - name: Publier les captures
         if: always()

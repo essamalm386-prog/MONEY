@@ -14,7 +14,6 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
-import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
 import kotlinx.coroutines.runBlocking
@@ -252,7 +251,15 @@ class CapturesTest {
      */
     private fun quitterEcran(temoin: String) {
         etape("  quitter l'écran (témoin $temoin)")
-        Espresso.pressBack()
+        /* Le retour est demande a l'application elle-meme, pas au
+           gestionnaire de fenetres. Un appui retour systeme passe par
+           la fenetre au premier plan : quand le Pixel Launcher de
+           l'emulateur declenche un ANR, sa boite prend le focus et le
+           retour n'atteint plus l'application. Le repartiteur, lui,
+           est exactement ce que le systeme appellerait — meme chemin,
+           sans dependre de la fenetre. */
+        regle.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        regle.waitForIdle()
         regle.waitUntil(timeoutMillis = 10_000) {
             regle.onAllNodesWithTag(temoin).fetchSemanticsNodes().isEmpty()
         }
