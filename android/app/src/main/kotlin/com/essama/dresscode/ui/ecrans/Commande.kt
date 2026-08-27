@@ -1,5 +1,6 @@
 package com.essama.dresscode.ui.ecrans
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,12 +39,13 @@ import com.essama.dresscode.charte.Icones
 import com.essama.dresscode.charte.Rayon
 import com.essama.dresscode.charte.Taille
 import com.essama.dresscode.metier.Commande
-import com.essama.dresscode.metier.Mesure
 import com.essama.dresscode.metier.ModeleCatalogue
 import com.essama.dresscode.metier.Statut
 import com.essama.dresscode.metier.dateLongue
 import com.essama.dresscode.metier.delai
 import com.essama.dresscode.metier.etat
+import com.essama.dresscode.metier.libelleMesure
+import com.essama.dresscode.metier.mesuresOrdonnees
 import com.essama.dresscode.metier.montant
 import com.essama.dresscode.ui.LigneInfo
 import com.essama.dresscode.ui.ModeleVue
@@ -73,6 +75,8 @@ fun EcranCommande(
     var demandeSolde by remember { mutableStateOf(false) }
     var demandeSuppression by remember { mutableStateOf(false) }
     var envoiFiche by remember { mutableStateOf(false) }
+    var mesuresOuvertes by remember { mutableStateOf(false) }
+    var photoAgrandie by remember { mutableStateOf(false) }
     var propositionCatalogue by remember { mutableStateOf(false) }
     val portee = rememberCoroutineScope()
 
@@ -98,6 +102,7 @@ fun EcranCommande(
     }
 
     LazyColumn(
+        modifier = Modifier.testTag("liste-commande"),
         contentPadding = PaddingValues(
             start = Espace.quatre, end = Espace.quatre,
             top = Espace.six, bottom = Espace.seize,
@@ -106,14 +111,17 @@ fun EcranCommande(
     ) {
         if (courante.photo != null) {
             item {
+                /* En grand, on voit la broderie et les finitions ;
+                   en vignette on ne fait que reconnaitre la commande. */
                 AsyncImage(
                     model = modeleVue.depot.photos.fichier(courante.photo!!),
-                    contentDescription = "Modèle : ${courante.modeleNom}",
+                    contentDescription = "Modèle : ${courante.modeleNom} — appuyer pour agrandir",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(4f / 3f)
-                        .clip(RoundedCornerShape(Rayon.xl)),
+                        .clip(RoundedCornerShape(Rayon.xl))
+                        .clickable { photoAgrandie = true },
                 )
             }
         }
@@ -204,11 +212,31 @@ fun EcranCommande(
             }
         }
 
-        val mesures = Mesure.entries.filter { courante.mesures[it]?.isNotBlank() == true }
-        if (mesures.isNotEmpty()) {
-            item { SousTitreCommande("Mesures de cette commande") }
-            items(mesures) { mesure ->
-                LigneInfo(mesure.libelle, "${courante.mesures[mesure]} cm")
+        /* Les mesures d'une commande sont celles prises ce jour-la :
+           elles peuvent differer de la fiche, et se corrigent ici sans
+           toucher a la cliente ni refaire la commande. */
+        val mesures = mesuresOrdonnees(courante.mesures)
+        item { SousTitreCommande("Mesures de cette commande") }
+        if (mesures.isEmpty()) {
+            item {
+                Text(
+                    "Aucune mesure notée pour cette commande.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            items(mesures) { (cle, valeur) ->
+                LigneInfo(libelleMesure(cle), "$valeur cm")
+            }
+        }
+        item {
+            OutlinedButton(
+                onClick = { mesuresOuvertes = true },
+                modifier = Modifier.testTag("mesures-commande"),
+            ) {
+                IconeSymbole(icone = Icones.Straighten, taille = Taille.petite)
+                Text(if (mesures.isEmpty()) "  Prendre les mesures" else "  Modifier")
             }
         }
 
@@ -227,6 +255,27 @@ fun EcranCommande(
     /* La forme de la fiche suit l'etat de la commande : recapitulatif
        a la commande, « votre vetement est pret » quand il l'est, recu
        a la livraison. Trois moments ou la cliente attend une trace. */
+    if (mesuresOuvertes) {
+        FeuilleMesures(
+            titre = "Mesures — ${courante.modeleNom}",
+            mesures = courante.mesures,
+            surFermeture = { mesuresOuvertes = false },
+            surValidation = { nouvelles ->
+                modeleVue.mettreAJourCommande(courante.copy(mesures = nouvelles))
+                mesuresOuvertes = false
+                message("Mesures enregistrées")
+            },
+        )
+    }
+
+    if (photoAgrandie && courante.photo != null) {
+        VisionneusePhoto(
+            fichier = modeleVue.depot.photos.fichier(courante.photo!!),
+            description = courante.modeleNom,
+            surFermeture = { photoAgrandie = false },
+        )
+    }
+
     if (envoiFiche) {
         FeuilleRecapitulatif(
             modeleVue = modeleVue,

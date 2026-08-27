@@ -2,6 +2,7 @@ package com.essama.dresscode.ui.ecrans
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,6 +74,7 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
 
     var selection by remember { mutableStateOf(setOf<Long>()) }
     var fiche by remember { mutableStateOf<Choix?>(null) }
+    var photoAgrandie by remember { mutableStateOf<String?>(null) }
     var choisirCliente by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -146,9 +148,18 @@ fun EcranModeles(modeleVue: ModeleVue, message: (String) -> Unit) {
                             selection + modele.id
                         }
                     },
+                    surLoupe = { modele.photo?.let { photoAgrandie = it } },
                 )
             }
         }
+    }
+
+    photoAgrandie?.let { nom ->
+        VisionneusePhoto(
+            fichier = modeleVue.depot.photos.fichier(nom),
+            description = modeles.firstOrNull { it.photo == nom }?.nom ?: "Modèle",
+            surFermeture = { photoAgrandie = null },
+        )
     }
 
     val ouverte = fiche
@@ -196,6 +207,7 @@ private fun CarteModele(
     enSelection: Boolean,
     surAppui: () -> Unit,
     surAppuiLong: () -> Unit,
+    surLoupe: () -> Unit,
 ) {
     Column(
         modifier = Modifier.combinedClickable(
@@ -230,6 +242,30 @@ private fun CarteModele(
                         icone = Icones.Checkroom,
                         taille = Taille.grande,
                         couleur = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            /* L'appui simple ouvre la fiche du modele, l'appui long
+               le selectionne : la loupe est le troisieme geste, et il
+               lui faut sa propre cible. */
+            if (fichierPhoto != null && !enSelection) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(Espace.deux)
+                        .size(32.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                            CircleShape,
+                        )
+                        .clickable(onClick = surLoupe),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    IconeSymbole(
+                        icone = Icones.Search,
+                        taille = Taille.petite,
+                        couleur = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }

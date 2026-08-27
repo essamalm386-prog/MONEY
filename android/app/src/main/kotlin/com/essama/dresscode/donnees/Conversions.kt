@@ -4,7 +4,6 @@ import com.essama.dresscode.metier.Cadence
 import com.essama.dresscode.metier.Categorie
 import com.essama.dresscode.metier.Client
 import com.essama.dresscode.metier.Commande
-import com.essama.dresscode.metier.Mesure
 import com.essama.dresscode.metier.ModeleCatalogue
 import com.essama.dresscode.metier.Statut
 import java.time.LocalDate
@@ -17,23 +16,29 @@ import java.time.LocalDate
  * secondes les regles qui comptent le plus.
  */
 
-/** « poitrine=92;taille=74 » — assez pour une douzaine de mesures. */
-internal fun Map<Mesure, String>.serialiser(): String =
-    entries.filter { it.value.isNotBlank() }
-        .joinToString(";") { "${it.key.name}=${it.value}" }
+/**
+ * « POITRINE=92;Tour de tête=58 » — la clef est le nom d'une constante
+ * Mesure quand c'en est une, le libelle ecrit par le couturier sinon.
+ * cleLibre() a deja retire les deux separateurs des libelles libres.
+ */
+internal fun Map<String, String>.serialiser(): String =
+    entries.filter { it.key.isNotBlank() && it.value.isNotBlank() }
+        .joinToString(";") { "${it.key}=${it.value}" }
 
-internal fun String.enMesures(): Map<Mesure, String> =
+/* L'ordre de saisie est conserve : une mesure ajoutee a la main garde
+   sa place dans la fiche, comme une ligne ajoutee au bas d'une page. */
+internal fun String.enMesures(): Map<String, String> =
     split(";")
         .filter { it.isNotBlank() }
         .mapNotNull { morceau ->
-            val (cle, valeur) = morceau.split("=", limit = 2).let {
-                if (it.size == 2) it[0] to it[1] else return@mapNotNull null
+            val morceaux = morceau.split("=", limit = 2)
+            if (morceaux.size == 2 && morceaux[0].isNotBlank()) {
+                morceaux[0] to morceaux[1]
+            } else {
+                null
             }
-            /* Une mesure retiree du code ne doit pas faire planter la
-               lecture d'une fiche enregistree avant. */
-            runCatching { Mesure.valueOf(cle) }.getOrNull()?.let { it to valeur }
         }
-        .toMap()
+        .toMap(LinkedHashMap())
 
 fun ClientEntite.versMetier() = Client(
     id = id,

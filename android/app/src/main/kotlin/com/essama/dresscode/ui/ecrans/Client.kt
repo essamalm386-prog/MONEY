@@ -23,7 +23,6 @@ import com.essama.dresscode.charte.Espace
 import com.essama.dresscode.charte.IconeSymbole
 import com.essama.dresscode.charte.Icones
 import com.essama.dresscode.charte.Taille
-import com.essama.dresscode.metier.Mesure
 import com.essama.dresscode.metier.Statut
 import com.essama.dresscode.metier.anciennete
 import com.essama.dresscode.metier.delai
@@ -37,6 +36,12 @@ import com.essama.dresscode.ui.LigneInfo
 import com.essama.dresscode.ui.ModeleVue
 import com.essama.dresscode.ui.Pastille
 import com.essama.dresscode.ui.Route
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
+import com.essama.dresscode.metier.libelleMesure
+import com.essama.dresscode.metier.mesuresOrdonnees
 
 /*
  * Trois choses comptent, dans cet ordre :
@@ -68,7 +73,8 @@ fun EcranClient(
     val passees = commandes.filter { it.statut == Statut.LIVREE }
         .sortedByDescending { it.livreeLe ?: 0 }
     val du = commandes.sumOf { it.reste }
-    val remplies = Mesure.entries.filter { client.mesures[it]?.isNotBlank() == true }
+    val remplies = mesuresOrdonnees(client.mesures)
+    var mesuresOuvertes by remember { mutableStateOf(false) }
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -146,8 +152,21 @@ fun EcranClient(
                     },
                 )
             }
-            items(remplies) { mesure ->
-                LigneInfo(mesure.libelle, "${client.mesures[mesure]} cm")
+            items(remplies) { (cle, valeur) ->
+                LigneInfo(libelleMesure(cle), "$valeur cm")
+            }
+        }
+
+        /* Une cliente change, une prise est fausse, un boubou demande
+           un tour de tete : les mesures se corrigent depuis sa fiche,
+           sans passer par une commande. */
+        item {
+            OutlinedButton(
+                onClick = { mesuresOuvertes = true },
+                modifier = Modifier.testTag("mesures-cliente"),
+            ) {
+                IconeSymbole(icone = Icones.Straighten, taille = Taille.petite)
+                Text(if (remplies.isEmpty()) "  Prendre les mesures" else "  Modifier les mesures")
             }
         }
 
@@ -198,6 +217,27 @@ fun EcranClient(
                 )
             }
         }
+    }
+
+    if (mesuresOuvertes) {
+        FeuilleMesures(
+            titre = "Mesures de ${client.nom}",
+            mesures = client.mesures,
+            surFermeture = { mesuresOuvertes = false },
+            surValidation = { nouvelles ->
+                modeleVue.enregistrerClient(
+                    client.copy(
+                        mesures = nouvelles,
+                        /* La date de prise compte autant que les
+                           chiffres : c'est elle qui dit s'il faut
+                           reverifier avant de couper. */
+                        mesuresMajLe = System.currentTimeMillis(),
+                    ),
+                )
+                mesuresOuvertes = false
+                message("Mesures enregistrées")
+            },
+        )
     }
 }
 

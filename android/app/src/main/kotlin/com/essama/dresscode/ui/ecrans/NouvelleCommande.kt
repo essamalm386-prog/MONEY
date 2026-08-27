@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +45,6 @@ import com.essama.dresscode.charte.Taille
 import com.essama.dresscode.metier.Cadence
 import com.essama.dresscode.metier.Client
 import com.essama.dresscode.metier.Commande
-import com.essama.dresscode.metier.Mesure
 import com.essama.dresscode.metier.correspondA
 import com.essama.dresscode.metier.dateLongue
 import com.essama.dresscode.metier.majusculeInitiale
@@ -54,6 +54,24 @@ import com.essama.dresscode.ui.ModeleVue
 import com.essama.dresscode.ui.Route
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.testTag
+import com.essama.dresscode.metier.ModeleCatalogue
+import com.essama.dresscode.metier.libelleMesure
+import com.essama.dresscode.metier.mesuresOrdonnees
 
 /*
  * L'ecran qui decide de l'adoption.
@@ -66,6 +84,7 @@ import java.time.LocalDate
  * valider ; ce qui est connu est deja rempli ; et les saisies
  * frequentes sont des appuis, pas des frappes.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EcranNouvelleCommande(
     modeleVue: ModeleVue,
@@ -76,21 +95,38 @@ fun EcranNouvelleCommande(
     val contexte = LocalContext.current
     val portee = rememberCoroutineScope()
     val clients by modeleVue.clients.collectAsState()
+    val modeles by modeleVue.modeles.collectAsState()
 
-    var client by remember(clientPreselectionne, clients) {
-        mutableStateOf(clients.firstOrNull { it.id == clientPreselectionne })
+    /* La preselection ne s'applique qu'une fois. Garder « clients »
+       comme clef de remember reinitialisait la cliente a chaque
+       emission de la liste — c'est-a-dire juste apres avoir
+       enregistre une commande, au moment precis ou l'on veut la
+       garder pour la suivante de la famille. */
+    var client by remember { mutableStateOf<Client?>(null) }
+    var preselectionFaite by remember { mutableStateOf(false) }
+    LaunchedEffect(clientPreselectionne, clients) {
+        if (!preselectionFaite && clientPreselectionne != null) {
+            clients.firstOrNull { it.id == clientPreselectionne }?.let {
+                client = it
+                preselectionFaite = true
+            }
+        }
     }
     var nouveauNom by remember { mutableStateOf("") }
     var nouveauTelephone by remember { mutableStateOf("") }
     var recherche by remember { mutableStateOf("") }
 
-    var mesures: Map<Mesure, String> by remember(client) {
+    var mesures: Map<String, String> by remember(client) {
         mutableStateOf(client?.mesures.orEmpty())
     }
-    var mesuresEtendues by remember { mutableStateOf(false) }
+    var mesuresOuvertes by remember { mutableStateOf(false) }
 
     var modeleNom by remember { mutableStateOf("") }
     var photo by remember { mutableStateOf<String?>(null) }
+    var modeleChoisi by remember { mutableStateOf<Long?>(null) }
+    var catalogueOuvert by remember { mutableStateOf(false) }
+    var calendrierOuvert by remember { mutableStateOf(false) }
+    var photoAgrandie by remember { mutableStateOf<String?>(null) }
     var livraison by remember { mutableStateOf<LocalDate?>(null) }
     var cadence by remember { mutableStateOf(Cadence.NORMALE) }
     var prixTotal by remember { mutableStateOf("") }
@@ -108,6 +144,7 @@ fun EcranNouvelleCommande(
     val reste = (nombre(prixTotal) - nombre(acompte)).coerceAtLeast(0)
 
     LazyColumn(
+        modifier = Modifier.testTag("liste-nouvelle-commande"),
         contentPadding = PaddingValues(
             start = Espace.quatre, end = Espace.quatre,
             top = Espace.six, bottom = Espace.seize,
@@ -193,45 +230,47 @@ fun EcranNouvelleCommande(
         // ---------- 2. Mesures ----------
         item {
             Etape(2, "Mesures", mesures.values.any { it.isNotBlank() }) {
-                if (client != null && client!!.mesures.isNotEmpty()) {
+                val prises = mesuresOrdonnees(mesures)
+                if (prises.isEmpty()) {
                     Text(
-                        "Reprises de la fiche, modifiables.",
-                        style = MaterialTheme.typography.bodySmall,
+                        "Pas encore prises. Elles peuvent aussi venir plus tard.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = Espace.trois),
                     )
-                }
-                /* Deux colonnes : six champs pleine largeur obligeraient
-                   a faire defiler pendant la prise de mesures, et le seul
-                   point ou le papier gagne est la vitesse de saisie. */
-                val liste = if (mesuresEtendues) Mesure.entries else Mesure.base
-                liste.chunked(2).forEach { paire ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = Espace.deux),
-                        horizontalArrangement = Arrangement.spacedBy(Espace.trois),
-                    ) {
-                        paire.forEach { mesure ->
-                            OutlinedTextField(
-                                value = mesures[mesure].orEmpty(),
-                                onValueChange = { mesures = mesures + (mesure to it) },
-                                label = { Text(mesure.libelle) },
-                                suffix = { Text("cm") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                    keyboardType = KeyboardType.Decimal,
-                                ),
-                            )
+                } else {
+                    /* Les mesures se lisent d'un coup d'oeil : le
+                       couturier verifie qu'elles sont la, il ne les
+                       ressaisit que s'il les reprend. */
+                    if (client?.mesures?.isNotEmpty() == true) {
+                        Text(
+                            "Reprises de la fiche.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    prises.chunked(2).forEach { paire ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = Espace.deux),
+                            horizontalArrangement = Arrangement.spacedBy(Espace.trois),
+                        ) {
+                            paire.forEach { (cle, valeur) ->
+                                Text(
+                                    "${libelleMesure(cle)} $valeur cm",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (paire.size == 1) Spacer(Modifier.weight(1f))
                         }
-                        /* Le nombre de mesures peut etre impair : la
-                           derniere garde sa demi-largeur. */
-                        if (paire.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
-                if (!mesuresEtendues) {
-                    androidx.compose.material3.TextButton(onClick = { mesuresEtendues = true }) {
-                        Text("Plus de mesures")
-                    }
+                OutlinedButton(
+                    onClick = { mesuresOuvertes = true },
+                    modifier = Modifier.padding(top = Espace.trois).testTag("prendre-mesures"),
+                ) {
+                    IconeSymbole(icone = Icones.Straighten, taille = Taille.petite)
+                    Text(if (prises.isEmpty()) "  Prendre les mesures" else "  Modifier")
                 }
             }
         }
@@ -239,35 +278,61 @@ fun EcranNouvelleCommande(
         // ---------- 3. Modele ----------
         item {
             Etape(3, "Modèle", modeleNom.isNotBlank()) {
+                /* La photo se regarde en grand d'un appui : c'est
+                   ainsi qu'on verifie qu'on a pris le bon modele, et
+                   qu'on le montre a la cliente en face de soi. */
                 photo?.let { nom ->
                     AsyncImage(
                         model = modeleVue.depot.photos.fichier(nom),
-                        contentDescription = "Modèle commandé",
+                        contentDescription = "Modèle commandé — appuyer pour agrandir",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(4f / 3f)
                             .clip(RoundedCornerShape(Rayon.lg))
+                            .clickable { photoAgrandie = nom }
                             .padding(bottom = Espace.trois),
                     )
                 }
                 OutlinedTextField(
                     value = modeleNom,
-                    onValueChange = { modeleNom = it },
+                    onValueChange = {
+                        modeleNom = it
+                        /* Un nom retouche a la main detache la commande
+                           du modele du catalogue : elle ne doit plus
+                           passer pour lui. */
+                        modeleChoisi = null
+                    },
                     label = { Text("Nom du modèle") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedButton(
-                    onClick = {
-                        choisirPhoto.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                        )
-                    },
-                    modifier = Modifier.padding(top = Espace.trois),
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = Espace.trois),
+                    horizontalArrangement = Arrangement.spacedBy(Espace.deux),
                 ) {
-                    IconeSymbole(icone = Icones.AddPhotoAlternate, taille = Taille.petite)
-                    Text("  ${if (photo == null) "Ajouter une photo" else "Changer la photo"}")
+                    /* Le catalogue en premier : au bout de deux mois,
+                       le modele demande y est presque toujours deja, et
+                       le choisir remplit nom, photo et prix d'un coup. */
+                    if (modeles.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = { catalogueOuvert = true },
+                            modifier = Modifier.testTag("choisir-modele"),
+                        ) {
+                            IconeSymbole(icone = Icones.PhotoLibrary, taille = Taille.petite)
+                            Text("  Catalogue")
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            choisirPhoto.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                    ) {
+                        IconeSymbole(icone = Icones.AddPhotoAlternate, taille = Taille.petite)
+                        Text("  ${if (photo == null) "Photo" else "Changer"}")
+                    }
                 }
             }
         }
@@ -276,7 +341,9 @@ fun EcranNouvelleCommande(
         item {
             Etape(4, "Livraison", livraison != null) {
                 /* Les echeances proposees sont celles qu'un couturier
-                   annonce a l'oral. Le calendrier reste pour le reste. */
+                   annonce a l'oral. Elles couvrent la semaine ; une
+                   ceremonie se prepare des mois a l'avance, et c'est
+                   le calendrier qui repond a celle-la. */
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Espace.deux),
@@ -293,6 +360,13 @@ fun EcranNouvelleCommande(
                             label = { Text(libelle) },
                         )
                     }
+                }
+                OutlinedButton(
+                    onClick = { calendrierOuvert = true },
+                    modifier = Modifier.padding(top = Espace.deux).testTag("choisir-date"),
+                ) {
+                    IconeSymbole(icone = Icones.CalendarMonth, taille = Taille.petite)
+                    Text("  Choisir une date")
                 }
                 livraison?.let {
                     Text(
@@ -373,22 +447,17 @@ fun EcranNouvelleCommande(
                     )
                     Text(montant(reste), style = MaterialTheme.typography.titleMedium)
                 }
-                Button(
-                    onClick = {
-                        /* Deux informations sont indispensables : qui,
-                           et pour quand. Tout le reste se complete
-                           depuis la fiche — bloquer sur un prix
-                           manquant ferait perdre la commande. */
-                        val nom = client?.nom ?: nouveauNom.trim()
-                        if (nom.isBlank()) {
-                            message("Nom de la cliente manquant")
-                            return@Button
-                        }
-                        val date = livraison
-                        if (date == null) {
-                            message("Date de livraison manquante")
-                            return@Button
-                        }
+                val enregistrer: (Boolean) -> Unit = { enchainer ->
+                    /* Deux informations sont indispensables : qui, et
+                       pour quand. Tout le reste se complete depuis la
+                       fiche — bloquer sur un prix manquant ferait
+                       perdre la commande. */
+                    val nom = client?.nom ?: nouveauNom.trim()
+                    val date = livraison
+                    when {
+                        nom.isBlank() -> message("Nom de la cliente manquant")
+                        date == null -> message("Date de livraison manquante")
+                        else -> {
                         portee.launch {
                             val propres = mesures.filterValues { it.isNotBlank() }
                             val existante = client
@@ -421,18 +490,214 @@ fun EcranNouvelleCommande(
                                         nombre(acompte) >= nombre(prixTotal),
                                 ),
                             )
-                            message("Commande enregistrée")
-                            /* On atterrit sur la fiche : le geste
-                               suivant, c'est l'envoi du recapitulatif
-                               a la cliente, tant qu'elle est encore la. */
-                            navigation.navigate(Route.commande(identifiant)) {
-                                popUpTo(Route.NouvelleCommande.chemin) { inclusive = true }
+                            if (enchainer) {
+                                /* Une famille pour une ceremonie, c'est
+                                   quatre tenues pour la meme date : la
+                                   mere, le pere, les enfants. Refaire
+                                   le parcours entier a chaque fois, y
+                                   compris la date, c'est ce qui fait
+                                   ressortir le cahier.
+
+                                   On garde donc l'echeance et la
+                                   cadence — ce que la famille a en
+                                   commun — et on vide le reste. La
+                                   cliente reste choisie mais se change
+                                   d'un appui : c'est parfois la meme
+                                   personne pour trois tenues, parfois
+                                   son mari pour la suivante. */
+                                client = existante?.copy(id = clientId)
+                                    ?: Client(id = clientId, nom = nom, telephone = nouveauTelephone)
+                                nouveauNom = ""
+                                nouveauTelephone = ""
+                                modeleNom = ""
+                                photo = null
+                                modeleChoisi = null
+                                prixTotal = ""
+                                acompte = ""
+                                message("Enregistrée — au suivant")
+                            } else {
+                                message("Commande enregistrée")
+                                /* On atterrit sur la fiche : le geste
+                                   suivant, c'est l'envoi du recapitulatif
+                                   a la cliente, tant qu'elle est encore la. */
+                                navigation.navigate(Route.commande(identifiant)) {
+                                    popUpTo(Route.NouvelleCommande.chemin) { inclusive = true }
+                                }
                             }
                         }
-                    },
-                ) {
-                    IconeSymbole(icone = Icones.Check, taille = Taille.petite)
-                    Text("  Enregistrer")
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(Espace.trois)) {
+                    Button(
+                        onClick = { enregistrer(false) },
+                        modifier = Modifier.testTag("enregistrer-commande"),
+                    ) {
+                        IconeSymbole(icone = Icones.Check, taille = Taille.petite)
+                        Text("  Enregistrer")
+                    }
+                    OutlinedButton(
+                        onClick = { enregistrer(true) },
+                        modifier = Modifier.testTag("enregistrer-et-suivante"),
+                    ) {
+                        IconeSymbole(icone = Icones.Add, taille = Taille.petite)
+                        Text("  Et une autre")
+                    }
+                }
+            }
+        }
+    }
+
+    if (mesuresOuvertes) {
+        FeuilleMesures(
+            titre = client?.nom?.let { "Mesures de $it" } ?: "Mesures",
+            mesures = mesures,
+            surFermeture = { mesuresOuvertes = false },
+            surValidation = {
+                mesures = it
+                mesuresOuvertes = false
+            },
+        )
+    }
+
+    if (catalogueOuvert) {
+        FeuilleCatalogue(
+            modeles = modeles,
+            fichier = { modeleVue.depot.photos.fichier(it) },
+            surFermeture = { catalogueOuvert = false },
+            surChoix = { choisi ->
+                modeleNom = choisi.nom
+                photo = choisi.photo
+                modeleChoisi = choisi.id
+                /* Le prix indicatif remplit le champ s'il est vide ;
+                   il ne remplace jamais un prix deja negocie. */
+                if (choisi.prixIndicatif > 0 && prixTotal.isBlank()) {
+                    prixTotal = choisi.prixIndicatif.toString()
+                }
+                catalogueOuvert = false
+            },
+        )
+    }
+
+    if (calendrierOuvert) {
+        /* Une echeance passee n'a pas de sens pour une commande qu'on
+           prend maintenant : le calendrier commence aujourd'hui. */
+        val aujourdhui = LocalDate.now()
+        val etatDate = rememberDatePickerState(
+            initialSelectedDateMillis = (livraison ?: aujourdhui.plusDays(3))
+                .toEpochDay() * 86_400_000L,
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    utcTimeMillis >= aujourdhui.toEpochDay() * 86_400_000L
+            },
+        )
+        DatePickerDialog(
+            onDismissRequest = { calendrierOuvert = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    etatDate.selectedDateMillis?.let {
+                        livraison = LocalDate.ofEpochDay(it / 86_400_000L)
+                    }
+                    calendrierOuvert = false
+                }) { Text("Choisir") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { calendrierOuvert = false },
+                ) { Text("Annuler") }
+            },
+        ) {
+            DatePicker(state = etatDate)
+        }
+    }
+
+    photoAgrandie?.let { nom ->
+        VisionneusePhoto(
+            fichier = modeleVue.depot.photos.fichier(nom),
+            description = modeleNom.ifBlank { "Modèle commandé" },
+            surFermeture = { photoAgrandie = null },
+        )
+    }
+}
+
+/*
+ * Le catalogue, ouvert depuis une commande.
+ *
+ * Au bout de deux mois d'usage, le modele demande y est presque
+ * toujours deja : le choisir remplit le nom, la photo et le prix d'un
+ * seul appui, la ou il fallait tout ressaisir.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FeuilleCatalogue(
+    modeles: List<ModeleCatalogue>,
+    fichier: (String) -> java.io.File,
+    surFermeture: () -> Unit,
+    surChoix: (ModeleCatalogue) -> Unit,
+) {
+    val etat = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = surFermeture, sheetState = etat) {
+        Column(
+            modifier = Modifier
+                .testTag("feuille-catalogue")
+                .fillMaxWidth()
+                .padding(horizontal = Espace.quatre)
+                .padding(bottom = Espace.huit),
+            verticalArrangement = Arrangement.spacedBy(Espace.trois),
+        ) {
+            Text("Catalogue", style = MaterialTheme.typography.headlineSmall)
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(120.dp),
+                horizontalArrangement = Arrangement.spacedBy(Espace.trois),
+                verticalArrangement = Arrangement.spacedBy(Espace.trois),
+                modifier = Modifier.heightIn(max = 420.dp),
+            ) {
+                items(modeles, key = { it.id }) { modele ->
+                    Column(
+                        modifier = Modifier.clickable { surChoix(modele) },
+                        verticalArrangement = Arrangement.spacedBy(Espace.un),
+                    ) {
+                        val photo = modele.photo
+                        if (photo != null) {
+                            AsyncImage(
+                                model = fichier(photo),
+                                contentDescription = modele.nom,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(3f / 4f)
+                                    .clip(RoundedCornerShape(Rayon.lg)),
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(3f / 4f)
+                                    .clip(RoundedCornerShape(Rayon.lg))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                IconeSymbole(
+                                    icone = Icones.Checkroom,
+                                    couleur = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Text(
+                            modele.nom,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        if (modele.prixIndicatif > 0) {
+                            Text(
+                                "à partir de ${montant(modele.prixIndicatif)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }

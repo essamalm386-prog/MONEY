@@ -2,11 +2,14 @@ package com.essama.dresscode
 
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
@@ -104,12 +107,16 @@ class CapturesTest {
                     nom = nom,
                     telephone = telephone,
                     mesures = mapOf(
-                        com.essama.dresscode.metier.Mesure.POITRINE to "92",
-                        com.essama.dresscode.metier.Mesure.TAILLE to "74",
-                        com.essama.dresscode.metier.Mesure.HANCHES to "100",
-                        com.essama.dresscode.metier.Mesure.EPAULE to "38",
-                        com.essama.dresscode.metier.Mesure.MANCHE to "58",
-                        com.essama.dresscode.metier.Mesure.LONGUEUR to "138",
+                        com.essama.dresscode.metier.Mesure.POITRINE.cle to "92",
+                        com.essama.dresscode.metier.Mesure.TAILLE.cle to "74",
+                        com.essama.dresscode.metier.Mesure.HANCHES.cle to "100",
+                        com.essama.dresscode.metier.Mesure.EPAULE.cle to "38",
+                        com.essama.dresscode.metier.Mesure.MANCHE.cle to "58",
+                        com.essama.dresscode.metier.Mesure.LONGUEUR.cle to "138",
+                        /* Une mesure que le couturier a nommee lui-meme :
+                           la capture doit montrer qu'elle tient sa place
+                           a cote des douze du metier. */
+                        "Tour de tête" to "56",
                     ),
                     mesuresMajLe = System.currentTimeMillis() - 40L * 86_400_000,
                 ),
@@ -140,6 +147,12 @@ class CapturesTest {
                     },
                     dateCommande = aujourdhui.minusDays(14),
                     dateLivraison = aujourdhui.plusDays(decalage),
+                    mesures = mapOf(
+                        com.essama.dresscode.metier.Mesure.POITRINE.cle to "92",
+                        com.essama.dresscode.metier.Mesure.TAILLE.cle to "74",
+                        com.essama.dresscode.metier.Mesure.LONGUEUR.cle to "138",
+                        "Tour de tête" to "56",
+                    ),
                     prixTotal = 50_000 + index * 10_000L,
                     acompte = 20_000,
                 ),
@@ -208,5 +221,33 @@ class CapturesTest {
             regle.onAllNodesWithTag("apercu-recapitulatif").fetchSemanticsNodes().isNotEmpty()
         }
         capturerFeuille("08-recapitulatif", etiquette = "feuille-recapitulatif")
+        fermerFeuille("feuille-recapitulatif")
+
+        /* Les mesures se corrigent depuis la commande : c'est ce que
+           l'ecran ne permettait pas, et la capture doit le montrer —
+           les douze du metier, plus « Tour de tête » nommee a la main. */
+        /* Le bouton est en bas d'une liste paresseuse : sans defiler
+           jusqu'a lui, il n'est meme pas compose. */
+        regle.onNodeWithTag("liste-commande")
+            .performScrollToNode(hasTestTag("mesures-commande"))
+        regle.onNodeWithTag("mesures-commande").performClick()
+        capturerFeuille("09-mesures", etiquette = "feuille-mesures")
+        fermerFeuille("feuille-mesures")
+
+        /* Le catalogue depuis la commande, et le calendrier : les deux
+           que le portage vers Android avait perdus. */
+        onglet("aujourdhui").performClick()
+        regle.waitForIdle()
+        regle.onNodeWithTag("action-principale").performClick()
+        regle.waitForIdle()
+        regle.onNodeWithTag("liste-nouvelle-commande")
+            .performScrollToNode(hasTestTag("choisir-date"))
+        regle.onNodeWithTag("choisir-date").performClick()
+        /* La boite de dialogue du calendrier vit dans sa propre
+           fenetre et n'a pas d'etiquette a nous : on verifie qu'elle
+           s'ouvre par son bouton de validation, sans la capturer. */
+        regle.waitUntil(timeoutMillis = 10_000) {
+            regle.onAllNodesWithText("Choisir").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 }

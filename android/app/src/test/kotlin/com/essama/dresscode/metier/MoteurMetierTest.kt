@@ -203,6 +203,50 @@ class MoteurMetierTest {
         assertEquals(Mesure.entries.size, Mesure.base.size + Mesure.supplementaires.size)
     }
 
+    /* Le carnet de papier n'a pas de liste fermee de mesures : le
+       couturier ecrit « tour de tete » dans la marge quand un boubou
+       le demande. */
+    @Test
+    fun uneMesureNommeeAlaMainGardeSonLibelle() {
+        assertEquals("Poitrine", libelleMesure(Mesure.POITRINE.cle))
+        assertEquals("Tour de tête", libelleMesure("Tour de tête"))
+    }
+
+    /* Le point-virgule et le signe egal separent les mesures a
+       l'enregistrement. Un libelle qui en contient couperait la fiche
+       en deux a la relecture — et ferait disparaitre des chiffres. */
+    @Test
+    fun unLibelleNeContientJamaisLesSeparateurs() {
+        assertEquals("Tour de tete cm", cleLibre("Tour de tete = cm"))
+        assertEquals("Hauteur pince", cleLibre("  Hauteur;pince  "))
+        assertEquals("", cleLibre("  ;=  "))
+    }
+
+    /* Les douze du metier d'abord, dans l'ordre ou on les prend ; les
+       mesures ajoutees a la main ensuite, dans l'ordre d'ajout. Une
+       fiche qui reordonne ses lignes a chaque ouverture se relit mal. */
+    @Test
+    fun lesMesuresStandardPassentAvantLesLibres() {
+        val mesures = linkedMapOf(
+            "Tour de tête" to "56",
+            Mesure.TAILLE.cle to "74",
+            "Hauteur pince" to "12",
+            Mesure.POITRINE.cle to "92",
+        )
+        assertEquals(
+            listOf("POITRINE", "TAILLE", "Tour de tête", "Hauteur pince"),
+            mesuresOrdonnees(mesures).map { it.first },
+        )
+    }
+
+    /* Une mesure vide n'est pas une mesure : elle ne doit pas occuper
+       une ligne de la fiche ni du recapitulatif. */
+    @Test
+    fun lesMesuresVidesNeSontPasListees() {
+        val mesures = mapOf(Mesure.POITRINE.cle to "92", Mesure.TAILLE.cle to "  ".trim())
+        assertEquals(listOf("POITRINE"), mesuresOrdonnees(mesures).map { it.first })
+    }
+
     // ---------- Dates et formats ----------
 
     @Test
